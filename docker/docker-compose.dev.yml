@@ -1,0 +1,4 @@
+# Uso: docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up -d web
+services:
+  web:
+    command: ["npm", "start", "--", "--host", "0.0.0.0", "--watch=false", "--live-reload=false"]

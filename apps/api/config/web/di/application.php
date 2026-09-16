@@ -1,0 +1,54 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Web\NotFound\NotFoundHandler;
+use App\Web\CorsMiddleware;
+use Yiisoft\Definitions\DynamicReference;
+use Yiisoft\Definitions\Reference;
+use Yiisoft\ErrorHandler\Middleware\ErrorCatcher;
+use Yiisoft\Input\Http\HydratorAttributeParametersResolver;
+use Yiisoft\Input\Http\RequestInputParametersResolver;
+use Yiisoft\Middleware\Dispatcher\CompositeParametersResolver;
+use Yiisoft\Middleware\Dispatcher\MiddlewareDispatcher;
+use Yiisoft\Middleware\Dispatcher\ParametersResolverInterface;
+use Yiisoft\RequestProvider\RequestCatcherMiddleware;
+use Yiisoft\Router\Middleware\Router;
+use Yiisoft\Session\SessionMiddleware;
+use Yiisoft\Yii\Http\Application;
+
+/** @var array $params */
+
+return [
+    Application::class => [
+        '__construct()' => [
+            'dispatcher' => DynamicReference::to([
+                'class' => MiddlewareDispatcher::class,
+                'withMiddlewares()' => [
+                    [
+                        CorsMiddleware::class,
+                        ErrorCatcher::class,
+                        SessionMiddleware::class,
+                        RequestCatcherMiddleware::class,
+                        Router::class,
+                    ],
+                ],
+            ]),
+            'fallbackHandler' => Reference::to(NotFoundHandler::class),
+        ],
+    ],
+
+    CorsMiddleware::class => [
+        '__construct()' => [
+            'allowedOrigins' => getenv('CORS_ALLOWED_ORIGINS') ?: 'http://localhost:4300,http://localhost:4200',
+        ],
+    ],
+
+    ParametersResolverInterface::class => [
+        'class' => CompositeParametersResolver::class,
+        '__construct()' => [
+            Reference::to(HydratorAttributeParametersResolver::class),
+            Reference::to(RequestInputParametersResolver::class),
+        ],
+    ],
+];

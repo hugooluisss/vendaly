@@ -1,0 +1,24 @@
+# AI tooling (local only, not project source)
+.claude/
+.agents/
+.codex/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Backend (PHP / Yii3 / Cycle ORM)
+apps/api/vendor/
+apps/api/runtime/
+apps/api/.env
+
+# Frontend (Angular)
+apps/web/node_modules/
+apps/web/dist/
+apps/web/.angular/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

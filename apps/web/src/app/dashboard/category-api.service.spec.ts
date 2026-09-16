@@ -1,0 +1,7 @@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
+import { CategoryApiService } from './category-api.service';
+import { environment } from '../../environments/environment';
+
+describe('CategoryApiService', () => { let api: CategoryApiService; let http: HttpTestingController; beforeEach(() => { TestBed.configureTestingModule({ providers: [CategoryApiService, provideHttpClient(), provideHttpClientTesting()] }); api = TestBed.inject(CategoryApiService); http = TestBed.inject(HttpTestingController); }); afterEach(() => http.verify()); it('unwraps the list response', () => { let result: unknown; api.list(2).subscribe(value => result = value); const req = http.expectOne(`${environment.apiBaseUrl}/businesses/2/categories`); const categories = [{ id: 1, name: 'Bebidas', position: 0 }]; req.flush({ categories }); expect(result).toEqual(categories); }); it('creates and reorders categories', () => { api.create(2, 'Bebidas').subscribe(); let req = http.expectOne(`${environment.apiBaseUrl}/businesses/2/categories`); expect(req.request.body).toEqual({ name: 'Bebidas' }); req.flush({}); api.reorder(2, [3, 1]).subscribe(); req = http.expectOne(`${environment.apiBaseUrl}/businesses/2/categories/reorder`); expect(req.request.method).toBe('POST'); expect(req.request.body).toEqual({ positions: { 3: 0, 1: 1 } }); }); });
