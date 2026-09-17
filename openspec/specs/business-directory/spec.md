@@ -62,3 +62,68 @@ The system SHALL make each listed business's coordinates available to the public
 #### Scenario: Businesses without coordinates are not plotted
 - **WHEN** a listed business has no coordinates
 - **THEN** it is excluded from the map pins while still appearing in the list view
+
+#### Scenario: Map pins are not limited by incremental list loading
+- **WHEN** the rendered list currently shows fewer businesses than the full filtered set because of incremental loading
+- **THEN** the map still shows a pin for every matching business that has coordinates, not only the ones currently rendered in the list
+
+### Requirement: Category-grouped directory listing
+The public directory page SHALL render listing results grouped into one section per category, in the order defined by the supported category list, with businesses that have no category grouped into a trailing "uncategorized" section, honoring the currently active category filter chips (every category when none are active, only the active ones otherwise).
+
+#### Scenario: Unfiltered results grouped by category
+- **WHEN** a visitor has no category filter chip active
+- **THEN** the page renders one section per category present in the results, ordered by the supported category list, each containing only businesses with that category
+
+#### Scenario: Uncategorized businesses grouped separately
+- **WHEN** the results include a published business with no category set
+- **THEN** that business appears in a trailing "uncategorized" section, after every named-category section
+
+#### Scenario: Category with no matching businesses
+- **WHEN** a supported category has no published businesses in the current results
+- **THEN** no section is rendered for that category
+
+#### Scenario: Filtered results shown as a single section
+- **WHEN** a visitor has exactly one category filter chip active
+- **THEN** the page renders only that category's section
+
+#### Scenario: Multiple active chips render multiple sections
+- **WHEN** a visitor has more than one category filter chip active
+- **THEN** the page renders one section per active category, each shown separately, in category-list order
+
+### Requirement: Floating category filter chips
+The public directory page SHALL present each supported category as a toggleable floating chip button, always visible (no modal), allowing zero or more categories to be active at once. The name search input SHALL also remain always visible, combinable with any active category chips.
+
+#### Scenario: No chip active shows every category
+- **WHEN** a visitor has no category chip active
+- **THEN** the directory shows businesses from every category, grouped as usual
+
+#### Scenario: One or more chips active narrows results
+- **WHEN** a visitor activates one or more category chips
+- **THEN** the directory shows only businesses belonging to an active category
+
+#### Scenario: Toggling a chip updates results immediately
+- **WHEN** a visitor activates or deactivates a category chip
+- **THEN** the displayed results update immediately, without a page navigation
+
+#### Scenario: Name search combines with active chips
+- **WHEN** a visitor has one or more category chips active and enters a name search term
+- **THEN** the directory shows only businesses matching both the active categories and the name term
+
+### Requirement: Incremental loading of directory results
+The public directory page SHALL initially render only the first 18 businesses of the current filtered set (in the same category order used for grouping) and SHALL automatically load and append the next 18 businesses as the visitor scrolls to the end of the currently rendered list, continuing until every matching business has been rendered.
+
+#### Scenario: Initial load caps at 18
+- **WHEN** the current filtered set has more than 18 matching businesses
+- **THEN** only the first 18, in category order, are rendered initially
+
+#### Scenario: Reaching the end loads more
+- **WHEN** a visitor scrolls to the end of the currently rendered list and more matching businesses remain
+- **THEN** the next 18 matching businesses are loaded and appended automatically, without a manual "load more" click or page navigation
+
+#### Scenario: Small result sets need no further loading
+- **WHEN** the current filtered set has 18 or fewer matching businesses
+- **THEN** all of them are rendered immediately and no further loading occurs
+
+#### Scenario: Changing filters resets pagination
+- **WHEN** a visitor changes the active category chips or the name search term
+- **THEN** the rendered list resets to showing the first 18 businesses of the new filtered set
