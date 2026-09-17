@@ -20,10 +20,20 @@ class Business
     public string $slug = '';
     #[Column('string', nullable: true, name: 'logo_url')]
     public ?string $logoUrl = null;
+    #[Column('string', nullable: true, name: 'cover_image_url')]
+    public ?string $coverImageUrl = null;
     #[Column('string', nullable: true, name: 'whatsapp_number')]
     public ?string $whatsappNumber = null;
     #[Column('text', nullable: true)]
     public ?string $description = null;
+    #[Column('text', nullable: true)]
+    public ?string $category = null;
+    #[Column('text', nullable: true)]
+    public ?string $location = null;
+    #[Column('decimal', nullable: true, typecast: 'float')]
+    public ?float $latitude = null;
+    #[Column('decimal', nullable: true, typecast: 'float')]
+    public ?float $longitude = null;
     #[Column('boolean', name: 'is_published', default: false)]
     public bool $isPublished = false;
     #[Column('datetime', name: 'created_at')]

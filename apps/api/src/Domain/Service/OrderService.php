@@ -14,7 +14,15 @@ final readonly class OrderService
         private BusinessRepositoryInterface $businesses,
         private ProductRepositoryInterface $products,
         private OrderRepositoryInterface $orders,
+        private ?BusinessMemberGuard $guard = null,
     ) {}
+
+    /** @return list<array{order: Order, items: OrderItem[]}> */
+    public function listForBusiness(int $userId, int $businessId, ?string $from = null, ?string $to = null): array
+    {
+        $this->guard?->assertOwner($userId, $businessId);
+        return $this->orders->findByBusinessId($businessId, $from, $to);
+    }
 
     /** @param array{items?: list<array{product_id:int,quantity:int,note?:string}>,customer_note?:string} $input */
     public function create(string $slug, array $input): array

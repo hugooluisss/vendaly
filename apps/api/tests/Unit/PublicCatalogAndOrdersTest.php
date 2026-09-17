@@ -23,6 +23,8 @@ final class PublicCatalogAndOrdersTest extends TestCase
         $inactive = $this->product(11, false, 'Inactive');
         $ingredients = new CatalogIngredients([10 => ['Tomato']]);
         $result = (new CatalogService(new FakeBusinesses($b), new FakeCategories([$c]), new FakeProducts([$active, $inactive]), $ingredients))->publicCatalog('shop');
+        self::assertArrayHasKey('cover_image_url', $result['business']);
+        self::assertNull($result['business']['cover_image_url']);
         self::assertCount(1, $result['categories'][0]['products']);
         self::assertSame('Active', $result['categories'][0]['products'][0]['name']);
         self::assertSame(['Tomato'], $result['categories'][0]['products'][0]['ingredients']);
@@ -52,6 +54,14 @@ final class PublicCatalogAndOrdersTest extends TestCase
         self::assertSame(['Tomato'], $result['categories'][0]['products'][0]['ingredients']);
         self::assertSame([], $result['categories'][0]['products'][1]['ingredients']);
         self::assertSame(1, $ingredients->loads);
+    }
+
+    public function testPublicCatalogIncludesCoverImageWhenSet(): void
+    {
+        $b = $this->business(true);
+        $b->coverImageUrl = 'https://objects/businesses/1/cover';
+        $result = (new CatalogService(new FakeBusinesses($b), new FakeCategories(), new FakeProducts()))->publicCatalog('shop');
+        self::assertSame($b->coverImageUrl, $result['business']['cover_image_url']);
     }
 
     public function testOrderSnapshotsMixedPricesAndRejectsEmptyAndUnpublished(): void
@@ -158,6 +168,9 @@ final class FakeBusinesses implements BusinessRepositoryInterface
     } public function findHours(int $businessId): array
     {
         return [];
+    } public function findPublishedDirectory(?string $category, ?string $location, ?float $latitude = null, ?float $longitude = null, ?string $name = null): array
+    {
+        return [];
     }
 }
 final class FakeCategories implements CategoryRepositoryInterface
@@ -218,6 +231,9 @@ final class FakeOrders implements OrderRepositoryInterface
     } public function findById(int $id): ?Order
     {
         return null;
+    } public function findByBusinessId(int $businessId, ?string $from = null, ?string $to = null): array
+    {
+        return [];
     } public function findItems(int $orderId): array
     {
         return $this->items;

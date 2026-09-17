@@ -10,6 +10,8 @@ use DomainException;
 
 final readonly class BusinessService
 {
+    private const CATEGORIES = ['restaurant', 'cafe', 'beauty_salon', 'professional_services', 'store', 'repair_services', 'other'];
+
     public function __construct(
         private BusinessManagementRepositoryInterface $businesses,
         private BusinessMemberGuard $guard,
@@ -47,7 +49,7 @@ final readonly class BusinessService
         return $business === null ? null : ['business' => $business, 'hours' => $this->businesses->findHours((int) $business->id)];
     }
 
-    public function updateProfile(int $userId, int $businessId, array $input, ?string $logo = null, string $contentType = 'application/octet-stream'): Business
+    public function updateProfile(int $userId, int $businessId, array $input, ?string $logo = null, string $contentType = 'application/octet-stream', ?string $coverImage = null, string $coverContentType = 'application/octet-stream'): Business
     {
         $this->guard->assertOwner($userId, $businessId);
         $business = $this->businesses->findById($businessId);
@@ -71,8 +73,37 @@ final readonly class BusinessService
         if (array_key_exists('description', $input)) {
             $business->description = $input['description'] === null ? null : trim((string) $input['description']);
         }
+        if (array_key_exists('category', $input)) {
+            $category = $input['category'];
+            if ($category !== null && (!is_string($category) || !in_array($category, self::CATEGORIES, true))) {
+                throw new DomainException('Invalid category.');
+            }
+            $business->category = $category;
+        }
+        if (array_key_exists('location', $input)) {
+            $business->location = $input['location'] === null ? null : trim((string) $input['location']);
+        }
+        if (array_key_exists('latitude', $input) || array_key_exists('longitude', $input)) {
+            $latitude = $input['latitude'] ?? null;
+            $longitude = $input['longitude'] ?? null;
+            if (($latitude === null || $latitude === '') && ($longitude === null || $longitude === '')) {
+                $business->latitude = $business->longitude = null;
+            } elseif (!array_key_exists('latitude', $input) || !array_key_exists('longitude', $input)
+                || !is_numeric($latitude) || !is_numeric($longitude)
+                || !is_finite((float) $latitude) || !is_finite((float) $longitude)
+                || (float) $latitude < -90 || (float) $latitude > 90
+                || (float) $longitude < -180 || (float) $longitude > 180) {
+                throw new DomainException('Invalid coordinates.');
+            } else {
+                $business->latitude = (float) $latitude;
+                $business->longitude = (float) $longitude;
+            }
+        }
         if ($logo !== null) {
             $business->logoUrl = $this->storage->put('businesses/' . $businessId . '/logo', $logo, $contentType);
+        }
+        if ($coverImage !== null) {
+            $business->coverImageUrl = $this->storage->put('businesses/' . $businessId . '/cover', $coverImage, $coverContentType);
         }
         return $this->businesses->update($business);
     }
@@ -103,6 +134,9 @@ final readonly class BusinessService
         $business = $this->businesses->findById($businessId);
         if ($business === null) {
             throw new DomainException('Business not found.');
+        }
+        if ($published && !$business->isPublished && ($business->latitude === null || $business->longitude === null)) {
+            throw new DomainException('Set a location on the map before publishing.');
         }
         $business->isPublished = $published;
         return $this->businesses->update($business);

@@ -6,6 +6,7 @@ namespace App\Infrastructure\Cycle\Repository;
 
 use App\Domain\Entity\{Business, BusinessHours};
 use App\Domain\Repository\BusinessManagementRepositoryInterface;
+use Cycle\Database\Injection\Fragment;
 
 final class CycleBusinessRepository extends CycleRepository implements BusinessManagementRepositoryInterface
 {
@@ -53,6 +54,30 @@ final class CycleBusinessRepository extends CycleRepository implements BusinessM
     public function findPublishedBySlug(string $slug): ?Business
     {
         return $this->orm->getRepository(Business::class)->select()->where(['slug' => $slug, 'isPublished' => true])->fetchOne();
+    }
+    public function findPublishedDirectory(?string $category, ?string $location, ?float $latitude = null, ?float $longitude = null, ?string $name = null): array
+    {
+        $query = $this->orm->getRepository(Business::class)->select()->where(['isPublished' => true]);
+        if ($category !== null && $category !== '') {
+            $query = $query->where('category', '=', $category);
+        }
+        if ($location !== null && $location !== '') {
+            $query = $query->where('location', 'ILIKE', '%' . $location . '%');
+        }
+        if ($name !== null && $name !== '') {
+            $query = $query->where('name', 'ILIKE', '%' . $name . '%');
+        }
+        if ($latitude !== null && $longitude !== null) {
+            $query = $query
+                ->where(new Fragment('latitude IS NOT NULL AND longitude IS NOT NULL'))
+                ->orderBy(new Fragment(
+                    '(6371 * 2 * ASIN(SQRT(POWER(SIN((RADIANS(latitude) - RADIANS(?)) / 2), 2) + COS(RADIANS(?)) * COS(RADIANS(latitude)) * POWER(SIN((RADIANS(longitude) - RADIANS(?)) / 2), 2))))',
+                    $latitude,
+                    $latitude,
+                    $longitude,
+                ));
+        }
+        return $query->fetchAll();
     }
     public function findHours(int $businessId): array
     {

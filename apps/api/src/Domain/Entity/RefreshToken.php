@@ -8,7 +8,7 @@ use Cycle\Annotated\Annotation\Column;
 use Cycle\Annotated\Annotation\Entity;
 
 #[Entity(table: 'refresh_tokens')]
-final class RefreshToken
+class RefreshToken
 {
     #[Column('primary')]
     public ?int $id = null;

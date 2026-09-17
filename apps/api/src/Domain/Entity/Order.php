@@ -8,7 +8,7 @@ use Cycle\Annotated\Annotation\Column;
 use Cycle\Annotated\Annotation\Entity;
 
 #[Entity(table: 'orders')]
-final class Order
+class Order
 {
     #[Column('primary')]
     public ?int $id = null;

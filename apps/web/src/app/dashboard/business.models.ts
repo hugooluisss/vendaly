@@ -3,8 +3,13 @@ export interface Business {
   name: string;
   slug?: string;
   logo_url?: string | null;
+  cover_image_url?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   whatsapp_number?: string | null;
   description?: string | null;
+  category?: string | null;
+  location?: string | null;
   is_published?: boolean;
 }
 

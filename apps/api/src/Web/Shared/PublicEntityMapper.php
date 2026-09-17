@@ -15,9 +15,12 @@ final class PublicEntityMapper
             'name' => $business->name,
             'slug' => $business->slug,
             'logo_url' => $business->logoUrl,
+            'cover_image_url' => $business->coverImageUrl,
             'whatsapp_number' => $business->whatsappNumber,
             'description' => $business->description,
             'is_published' => $business->isPublished,
+            'latitude' => $business->latitude,
+            'longitude' => $business->longitude,
         ];
     }
 

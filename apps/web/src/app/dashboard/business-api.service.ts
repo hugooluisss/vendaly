@@ -11,11 +11,12 @@ export class BusinessApiService {
 
   create(name: string) { return this.http.post<{ business: Business }>(this.url, { name }).pipe(map(r => r.business)); }
   getMine() { return this.http.get<BusinessSettings>(`${this.url}/me`); }
-  update(id: number, fields: Pick<Business, 'name' | 'whatsapp_number' | 'description'>, logo?: File) {
-    if (!logo) return this.http.patch<{ business: Business }>(`${this.url}/${id}`, fields).pipe(map(r => r.business));
+  update(id: number, fields: Partial<Pick<Business, 'name' | 'whatsapp_number' | 'description' | 'category' | 'location' | 'latitude' | 'longitude'>>, logo?: File, coverImage?: File) {
+    if (!logo && !coverImage) return this.http.patch<{ business: Business }>(`${this.url}/${id}`, fields).pipe(map(r => r.business));
     const body = new FormData();
-    Object.entries(fields).forEach(([key, value]) => body.append(key, value ?? ''));
-    body.append('logo', logo, logo.name);
+    Object.entries(fields).forEach(([key, value]) => body.append(key, String(value ?? '')));
+    if (logo) body.append('logo', logo, logo.name);
+    if (coverImage) body.append('cover_image', coverImage, coverImage.name);
     return this.http.post<{ business: Business }>(`${this.url}/${id}`, body).pipe(map(r => r.business));
   }
   saveHours(id: number, hours: BusinessHour[]) {

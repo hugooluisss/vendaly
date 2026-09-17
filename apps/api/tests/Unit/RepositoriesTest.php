@@ -42,6 +42,76 @@ final class RepositoriesTest extends TestCase
         self::assertSame($business->slug, $found->slug);
     }
 
+    public function testPublishedDirectoryFiltersAndExcludesUnpublishedBusinesses(): void
+    {
+        $location = 'DirectoryTest' . uniqid();
+        $publishedCafe = $this->createBusiness(true, null, 'cafe', $location);
+        $publishedStore = $this->createBusiness(true, null, 'store', 'Guadalajara');
+        $unpublishedCafe = $this->createBusiness(false, null, 'cafe', 'Roma');
+        $repository = new CycleBusinessRepository();
+        $listedIds = array_map(static fn(Business $b) => (int) $b->id, $repository->findPublishedDirectory(null, null));
+        self::assertContains((int) $publishedCafe->id, $listedIds);
+        self::assertContains((int) $publishedStore->id, $listedIds);
+        self::assertNotContains((int) $unpublishedCafe->id, $listedIds);
+        $categoryIds = array_map(static fn(Business $b) => (int) $b->id, $repository->findPublishedDirectory('cafe', null));
+        self::assertContains((int) $publishedCafe->id, $categoryIds);
+        self::assertNotContains((int) $unpublishedCafe->id, $categoryIds);
+        self::assertSame([(int) $publishedCafe->id], array_map(static fn(Business $b) => (int) $b->id, $repository->findPublishedDirectory(null, strtolower($location))));
+        self::assertSame([(int) $publishedCafe->id], array_map(static fn(Business $b) => (int) $b->id, $repository->findPublishedDirectory('cafe', strtolower($location))));
+    }
+
+    public function testPublishedDirectorySortsByDistanceAndExcludesCoordinateLessBusinessesOnlyWhenRequested(): void
+    {
+        $category = 'geo-' . uniqid();
+        $near = $this->createBusiness(true, null, $category, null); $near->latitude = 19.4326; $near->longitude = -99.1332;
+        $far = $this->createBusiness(true, null, $category, null); $far->latitude = 20.6597; $far->longitude = -103.3496;
+        $withoutCoordinates = $this->createBusiness(true, null, $category, null);
+        $repository = new CycleBusinessRepository();
+        $pdo = new \PDO(
+            getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly',
+            getenv('POSTGRES_USER') ?: 'vendaly',
+            getenv('POSTGRES_PASSWORD') ?: 'vendaly',
+        );
+        $statement = $pdo->prepare('UPDATE businesses SET latitude = :latitude, longitude = :longitude WHERE id = :id');
+        $statement->execute(['latitude' => $near->latitude, 'longitude' => $near->longitude, 'id' => $near->id]);
+        $statement->execute(['latitude' => $far->latitude, 'longitude' => $far->longitude, 'id' => $far->id]);
+        $sorted = $repository->findPublishedDirectory($category, null, 19.4327, -99.1331);
+        self::assertSame([(int) $near->id, (int) $far->id], array_map(static fn(Business $b) => (int) $b->id, $sorted));
+        $base = $repository->findPublishedDirectory($category, null);
+        $baseIds = array_map(static fn(Business $b) => (int) $b->id, $base);
+        sort($baseIds);
+        $expectedIds = [(int) $near->id, (int) $far->id, (int) $withoutCoordinates->id];
+        sort($expectedIds);
+        self::assertSame($expectedIds, $baseIds);
+    }
+
+    public function testPublishedDirectoryFiltersByPartialNameWithCategoryAndDistance(): void
+    {
+        $term = 'DirectoryName' . uniqid();
+        $repository = new CycleBusinessRepository();
+        $near = $this->createNamedBusiness($term . ' Near', true, 'cafe');
+        $far = $this->createNamedBusiness($term . ' Far', true, 'cafe');
+        $otherCategory = $this->createNamedBusiness($term . ' Store', true, 'store');
+        $unpublished = $this->createNamedBusiness($term . ' Hidden', false, 'cafe');
+
+        $pdo = new \PDO(
+            getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly',
+            getenv('POSTGRES_USER') ?: 'vendaly',
+            getenv('POSTGRES_PASSWORD') ?: 'vendaly',
+        );
+        $statement = $pdo->prepare('UPDATE businesses SET latitude = :latitude, longitude = :longitude WHERE id = :id');
+        $statement->execute(['latitude' => 19.4326, 'longitude' => -99.1332, 'id' => $near->id]);
+        $statement->execute(['latitude' => 20.6597, 'longitude' => -103.3496, 'id' => $far->id]);
+        $statement->execute(['latitude' => 19.4328, 'longitude' => -99.1333, 'id' => $otherCategory->id]);
+
+        $nameMatches = $repository->findPublishedDirectory(null, null, 19.4327, -99.1331, strtolower($term));
+        self::assertSame([(int) $near->id, (int) $otherCategory->id, (int) $far->id], array_map(static fn(Business $b) => (int) $b->id, $nameMatches));
+        self::assertNotContains((int) $unpublished->id, array_map(static fn(Business $b) => (int) $b->id, $nameMatches));
+
+        $categoryMatches = $repository->findPublishedDirectory('cafe', null, null, null, $term);
+        self::assertSame([(int) $near->id, (int) $far->id], array_map(static fn(Business $b) => (int) $b->id, $categoryMatches));
+    }
+
     public function testCategoryCreateAndFetchById(): void
     {
         $business = $this->createBusiness();
@@ -102,6 +172,26 @@ final class RepositoriesTest extends TestCase
         self::assertNotNull($found);
         self::assertSame('12.50', $found->total);
         self::assertSame('No onions', $found->customerNote);
+    }
+
+    public function testOrderListingFiltersInSqlAndIncludesItems(): void
+    {
+        $business = $this->createBusiness();
+        $repository = new CycleOrderRepository();
+        $category = new Category(); $category->businessId = (int) $business->id; $category->name = 'Food'; (new CycleCategoryRepository())->create($category);
+        $product = new Product(); $product->businessId = (int) $business->id; $product->categoryId = (int) $category->id; $product->name = 'Burger'; $product->createdAt = date(DATE_ATOM); (new CycleProductRepository())->create($product);
+        foreach (['2026-09-10T12:00:00+00:00', '2026-09-20T12:00:00+00:00', '2026-10-01T12:00:00+00:00'] as $date) {
+            $order = new Order(); $order->businessId = (int) $business->id; $order->createdAt = $date; $repository->create($order);
+            if ($date !== '2026-10-01T12:00:00+00:00') { $item = new \App\Domain\Entity\OrderItem(); $item->orderId = (int) $order->id; $item->productId = (int) $product->id; $item->productNameSnapshot = $date === '2026-09-20T12:00:00+00:00' ? 'Burger' : 'Fries'; $repository->createItem($item); }
+        }
+        $all = $repository->findByBusinessId((int) $business->id);
+        self::assertCount(3, $all);
+        self::assertCount(1, $all[1]['items']);
+        self::assertCount(1, $all[2]['items']);
+        $filtered = $repository->findByBusinessId((int) $business->id, '2026-09-15', '2026-09-30');
+        self::assertCount(1, $filtered);
+        self::assertSame('2026-09-20T12:00:00+00:00', $filtered[0]['order']->createdAt);
+        self::assertSame('Burger', $filtered[0]['items'][0]->productNameSnapshot);
     }
 
     public function testSoftDeletedCatalogRowsRemainButAreHidden(): void
@@ -195,7 +285,7 @@ final class RepositoriesTest extends TestCase
         return (new CycleUserRepository())->create($user);
     }
 
-    private function createBusiness(bool $published = false, ?string $whatsappNumber = null): Business
+    private function createBusiness(bool $published = false, ?string $whatsappNumber = null, ?string $category = null, ?string $location = null): Business
     {
         $business = new Business();
         $business->id = $this->nextId('businesses');
@@ -204,6 +294,21 @@ final class RepositoriesTest extends TestCase
         $business->slug = 'test-' . uniqid();
         $business->isPublished = $published;
         $business->whatsappNumber = $whatsappNumber;
+        $business->category = $category;
+        $business->location = $location;
+        $business->createdAt = date(DATE_ATOM);
+        return (new CycleBusinessRepository())->create($business);
+    }
+
+    private function createNamedBusiness(string $name, bool $published, string $category): Business
+    {
+        $business = new Business();
+        $business->ownerUserId = (int) $this->createUser()->id;
+        $business->id = $this->nextId('businesses');
+        $business->name = $name;
+        $business->slug = 'test-' . uniqid();
+        $business->isPublished = $published;
+        $business->category = $category;
         $business->createdAt = date(DATE_ATOM);
         return (new CycleBusinessRepository())->create($business);
     }

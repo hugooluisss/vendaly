@@ -43,8 +43,52 @@ final class BusinessAndCatalogManagementTest extends TestCase
         $service->updateProfile(7, 1, ['name' => 'Updated', 'whatsapp_number' => '+52 55 1234 5678', 'description' => 'About'], 'logo', 'image/png');
         self::assertSame('Updated', $business->name);
         self::assertSame('https://objects/businesses/1/logo', $business->logoUrl);
+        $service->updateProfile(7, 1, ['category' => 'cafe', 'location' => 'Roma Norte']);
+        self::assertSame('cafe', $business->category);
+        self::assertSame('Roma Norte', $business->location);
         $this->expectException(DomainException::class);
         $service->updateProfile(7, 1, ['whatsapp_number' => 'not-a-phone']);
+    }
+
+    public function testProfileRejectsInvalidCategoryAndAllowsUnsetFields(): void
+    {
+        $repo = new ManagementBusinesses(); $business = $this->business(1); $repo->businesses[] = $business; $repo->members[] = $this->member(1, 7);
+        $service = new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage());
+        $service->updateProfile(7, 1, []);
+        self::assertNull($business->category); self::assertNull($business->location);
+        $this->expectException(DomainException::class);
+        $service->updateProfile(7, 1, ['category' => 'invalid']);
+    }
+
+    public function testProfileCoordinatesAreOptionalValidatedAndStored(): void
+    {
+        $repo = new ManagementBusinesses(); $business = $this->business(1); $repo->businesses[] = $business; $repo->members[] = $this->member(1, 7);
+        $service = new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage());
+        $service->updateProfile(7, 1, ['latitude' => '19.4326', 'longitude' => '-99.1332']);
+        self::assertSame(19.4326, $business->latitude);
+        self::assertSame(-99.1332, $business->longitude);
+        $service->updateProfile(7, 1, ['latitude' => null, 'longitude' => null]);
+        self::assertNull($business->latitude);
+        self::assertNull($business->longitude);
+        foreach ([['latitude' => 91, 'longitude' => 0], ['latitude' => 0, 'longitude' => 181], ['latitude' => 0]] as $input) {
+            try {
+                $service->updateProfile(7, 1, $input);
+                self::fail('Expected invalid coordinates.');
+            } catch (DomainException $e) {
+                self::assertSame('Invalid coordinates.', $e->getMessage());
+            }
+        }
+    }
+
+    public function testProfileUploadsAndReplacesCoverImage(): void
+    {
+        $repo = new ManagementBusinesses(); $business = $this->business(1); $repo->businesses[] = $business; $repo->members[] = $this->member(1, 7);
+        $storage = new FakeStorage();
+        $service = new BusinessService($repo, new BusinessMemberGuard($repo), $storage);
+        $service->updateProfile(7, 1, [], null, 'application/octet-stream', 'first', 'image/png');
+        $service->updateProfile(7, 1, [], null, 'application/octet-stream', 'second', 'image/jpeg');
+        self::assertSame('https://objects/businesses/1/cover', $business->coverImageUrl);
+        self::assertSame(['businesses/1/cover', 'businesses/1/cover'], $storage->keys);
     }
 
     public function testClosedHoursAndNonMemberRejection(): void
@@ -128,12 +172,55 @@ final class BusinessAndCatalogManagementTest extends TestCase
 
     public function testPublishAndUnpublishAffectsPublicCatalog(): void
     {
-        $businesses = new ManagementBusinesses(); $business = $this->business(1); $business->slug = 'shop'; $businesses->businesses[] = $business; $businesses->members[] = $this->member(1, 7);
+        $businesses = new ManagementBusinesses(); $business = $this->business(1); $business->slug = 'shop'; $business->latitude = 19.4326; $business->longitude = -99.1332; $businesses->businesses[] = $business; $businesses->members[] = $this->member(1, 7);
         $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage());
         $service->setPublished(7, 1, true);
         self::assertNotNull((new CatalogService($businesses, new PublicCategories(), new PublicProducts()))->publicCatalog('shop'));
         $service->setPublished(7, 1, false);
         self::assertNull((new CatalogService($businesses, new PublicCategories(), new PublicProducts()))->publicCatalog('shop'));
+    }
+
+    public function testPublishingRequiresBothCoordinates(): void
+    {
+        $businesses = new ManagementBusinesses(); $business = $this->business(1); $businesses->businesses[] = $business; $businesses->members[] = $this->member(1, 7);
+        $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage());
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Set a location on the map before publishing.');
+        $service->setPublished(7, 1, true);
+        self::assertFalse($business->isPublished);
+    }
+
+    public function testPublishingSucceedsWithCoordinates(): void
+    {
+        $businesses = new ManagementBusinesses(); $business = $this->business(1); $business->latitude = 19.4326; $business->longitude = -99.1332; $businesses->businesses[] = $business; $businesses->members[] = $this->member(1, 7);
+        $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage());
+
+        $service->setPublished(7, 1, true);
+
+        self::assertTrue($business->isPublished);
+    }
+
+    public function testUnpublishingDoesNotRequireCoordinates(): void
+    {
+        $businesses = new ManagementBusinesses(); $business = $this->business(1); $businesses->businesses[] = $business; $businesses->members[] = $this->member(1, 7);
+        $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage());
+
+        $service->setPublished(7, 1, false);
+        self::assertFalse($business->isPublished);
+        $business->isPublished = true;
+        $service->setPublished(7, 1, false);
+        self::assertFalse($business->isPublished);
+    }
+
+    public function testAlreadyPublishedCoordinateLessBusinessIsUnaffected(): void
+    {
+        $businesses = new ManagementBusinesses(); $business = $this->business(1); $business->isPublished = true; $businesses->businesses[] = $business; $businesses->members[] = $this->member(1, 7);
+        $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage());
+
+        $service->setPublished(7, 1, true);
+
+        self::assertTrue($business->isPublished);
     }
 
     private function business(int $id): Business { $b = new Business(); $b->id = $id; $b->slug = 'business'; $b->name = 'Business'; return $b; }
@@ -142,7 +229,8 @@ final class BusinessAndCatalogManagementTest extends TestCase
 
 final class FakeStorage implements ObjectStorageInterface
 {
-    public function put(string $key, string $contents, string $contentType): string { return 'https://objects/' . $key; }
+    public array $keys = [];
+    public function put(string $key, string $contents, string $contentType): string { $this->keys[] = $key; return 'https://objects/' . $key; }
 }
 final class ManagementBusinesses implements BusinessManagementRepositoryInterface
 {
@@ -150,6 +238,7 @@ final class ManagementBusinesses implements BusinessManagementRepositoryInterfac
     public function create(Business $entity): Business { $entity->id ??= count($this->businesses) + 1; $this->businesses[] = $entity; return $entity; }
     public function findById(int $id): ?Business { foreach ($this->businesses as $b) if ($b->id === $id) return $b; return null; }
     public function findPublishedBySlug(string $slug): ?Business { foreach ($this->businesses as $b) if ($b->slug === $slug && $b->isPublished) return $b; return null; }
+    public function findPublishedDirectory(?string $category, ?string $location, ?float $latitude = null, ?float $longitude = null, ?string $name = null): array { return []; }
     public function findHours(int $businessId): array { return array_values(array_filter($this->hours, fn(BusinessHours $h) => $h->businessId === $businessId)); }
     public function findByOwnerUserId(int $userId): ?Business { foreach ($this->businesses as $b) if ($b->ownerUserId === $userId) return $b; return null; }
     public function findByMemberUserId(int $userId): ?Business { foreach ($this->members as $m) if ($m->userId === $userId) return $this->findById($m->businessId); return null; }

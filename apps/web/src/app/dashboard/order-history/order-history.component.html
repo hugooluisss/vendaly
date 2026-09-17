@@ -1,0 +1,11 @@
+<section class="card">
+  <div class="heading"><div><p class="eyebrow">HISTORIAL</p><h1>Pedidos</h1></div><strong class="count">{{ count }} pedido{{ count === 1 ? '' : 's' }}</strong></div>
+  <div class="range" aria-label="Rango de fechas">
+    @for (option of [{ value: 'today', label: 'Hoy' }, { value: '7', label: '7 días' }, { value: '30', label: '30 días' }, { value: 'custom', label: 'Personalizado' }]; track option.value) {<button type="button" [class.selected]="range === option.value" (click)="selectRange($any(option.value))">{{ option.label }}</button>}
+  </div>
+  @if (range === 'custom') {<div class="custom-range"><label>Desde<input type="date" [(ngModel)]="from"></label><label>Hasta<input type="date" [(ngModel)]="to"></label><button class="button" type="button" (click)="applyCustomRange()" [disabled]="!from || !to || from > to">Aplicar</button></div>}
+  @if (loading) {<p class="muted">Cargando pedidos…</p>}
+  @if (error) {<p class="error" role="alert">{{ error }}</p>}
+  @if (!loading && !error && !orders.length) {<p class="muted empty">No hay pedidos en este rango.</p>}
+  @if (!loading && orders.length) {<div class="orders">@for (order of orders; track order.id) {<article class="order"><div class="order-heading"><strong>Pedido #{{ order.id }}</strong><time [attr.datetime]="order.created_at">{{ order.created_at | date:'d MMM y, HH:mm' }}</time></div><ul>@for (item of order.items; track $index) {<li><span>{{ item.quantity }} × {{ item.name }}</span>@if (item.note) {<small>Nota: {{ item.note }}</small>}</li>}</ul>@if (order.customer_note) {<p class="note">Nota: {{ order.customer_note }}</p>}<strong class="total">{{ order.total == null ? 'Total por confirmar' : (order.total | currency:'MXN':'symbol':'1.2-2') }}</strong></article>}</div>}
+</section>

@@ -2,6 +2,7 @@
 .claude/
 .agents/
 .codex/
+handoff.md
 
 # Environment variables / secrets
 .env

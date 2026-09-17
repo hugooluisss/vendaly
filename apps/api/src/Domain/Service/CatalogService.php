@@ -41,6 +41,7 @@ final readonly class CatalogService
                 'name' => $business->name,
                 'slug' => $business->slug,
                 'logo_url' => $business->logoUrl,
+                'cover_image_url' => $business->coverImageUrl,
                 'description' => $business->description,
             ],
             'hours' => array_map(static fn($h) => [

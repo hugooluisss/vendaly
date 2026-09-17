@@ -33,7 +33,8 @@ final readonly class BusinessController
     {
         try {
             [$contents, $type] = $this->upload($request, 'logo');
-            return $this->json(['business' => PublicEntityMapper::business($this->service->updateProfile($this->userId($request), $this->id(), $this->body($request), $contents, $type))]);
+            [$cover, $coverType] = $this->upload($request, 'cover_image');
+            return $this->json(['business' => PublicEntityMapper::business($this->service->updateProfile($this->userId($request), $this->id(), $this->body($request), $contents, $type, $cover, $coverType))]);
         } catch (DomainException $e) { return $this->error($e); }
     }
     public function hours(ServerRequestInterface $request): ResponseInterface
