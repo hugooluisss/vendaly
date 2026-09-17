@@ -6,20 +6,6 @@ import { DirectoryBusiness } from '../public.models';
 import { BUSINESS_CATEGORIES, businessCategoryLabel } from '../../shared/business-category';
 import { MapComponent, MapPosition } from '../../shared/map/map.component';
 
-export interface DirectoryBusinessGroup {
-  label: string;
-  businesses: DirectoryBusiness[];
-}
-
-export function groupDirectoryBusinesses(businesses: DirectoryBusiness[]): DirectoryBusinessGroup[] {
-  const supportedCategories = new Set<string>(BUSINESS_CATEGORIES.map(category => category.value));
-  const groups = BUSINESS_CATEGORIES
-    .map(category => ({ label: category.label, businesses: businesses.filter(business => business.category === category.value) }))
-    .filter(group => group.businesses.length);
-  const uncategorized = businesses.filter(business => !business.category || !supportedCategories.has(business.category));
-  return uncategorized.length ? [...groups, { label: 'Otros', businesses: uncategorized }] : groups;
-}
-
 @Component({ standalone: true, imports: [FormsModule, RouterLink, MapComponent], styleUrl: '../public.css', templateUrl: './public.component.html' })
 export class PublicComponent implements AfterViewInit, OnDestroy {
   private readonly api = inject(BusinessDirectoryApiService);
@@ -28,9 +14,8 @@ export class PublicComponent implements AfterViewInit, OnDestroy {
   readonly categoryLabel = businessCategoryLabel;
   activeCategories = new Set<string>();
   name = '';
-  visibleCount = 18;
+  visibleCount = 10;
   businesses: DirectoryBusiness[] = [];
-  categoryGroups: DirectoryBusinessGroup[] = [];
   visitorPosition: MapPosition | null = null;
   mapBusinesses: DirectoryBusiness[] = [];
   mapMarkers: MapPosition[] = [];
@@ -55,32 +40,23 @@ export class PublicComponent implements AfterViewInit, OnDestroy {
       next: businesses => {
         if (version !== this.searchVersion) return;
         this.businesses = businesses;
-        this.updateGroups();
-        this.visibleCount = 18;
+        this.visibleCount = 10;
         this.updateMap();
       },
       error: () => {
         if (version !== this.searchVersion) return;
-        this.businesses = []; this.categoryGroups = []; this.visibleCount = 18; this.mapBusinesses = []; this.mapMarkers = [];
+        this.businesses = []; this.visibleCount = 10; this.mapBusinesses = []; this.mapMarkers = [];
       },
     });
   }
 
   get visibleBusinesses(): DirectoryBusiness[] {
-    return this.categoryGroups.flatMap(group => group.businesses).slice(0, this.visibleCount);
-  }
-
-  get visibleCategoryGroups(): DirectoryBusinessGroup[] {
-    const visible = new Set(this.visibleBusinesses);
-    return this.categoryGroups
-      .map(group => ({ ...group, businesses: group.businesses.filter(business => visible.has(business)) }))
-      .filter(group => group.businesses.length);
+    return this.filteredBusinesses.slice(0, this.visibleCount);
   }
 
   toggleCategory(value: string): void {
     this.activeCategories.has(value) ? this.activeCategories.delete(value) : this.activeCategories.add(value);
-    this.updateGroups();
-    this.visibleCount = 18;
+    this.visibleCount = 10;
     this.updateMap();
   }
 
@@ -106,15 +82,11 @@ export class PublicComponent implements AfterViewInit, OnDestroy {
   }
 
   loadMore(): void {
-    const total = this.categoryGroups.reduce((count, group) => count + group.businesses.length, 0);
+    const total = this.filteredBusinesses.length;
     if (this.loadingMore || this.visibleCount >= total) return;
     this.loadingMore = true;
-    this.visibleCount = Math.min(this.visibleCount + 18, total);
+    this.visibleCount = Math.min(this.visibleCount + 10, total);
     queueMicrotask(() => { this.loadingMore = false; });
-  }
-
-  private updateGroups(): void {
-    this.categoryGroups = groupDirectoryBusinesses(this.filteredBusinesses);
   }
 
   private get filteredBusinesses(): DirectoryBusiness[] {
