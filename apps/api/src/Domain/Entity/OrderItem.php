@@ -24,4 +24,6 @@ class OrderItem
     public int $quantity = 1;
     #[Column('text', nullable: true)]
     public ?string $note = null;
+    /** @var OrderItemOption[] */
+    public array $options = [];
 }

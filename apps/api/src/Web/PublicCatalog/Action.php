@@ -15,8 +15,7 @@ final readonly class Action
         private ResponseFactoryInterface $responses,
         private StreamFactoryInterface $streams,
         private CurrentRoute $route,
-    ) {
-    }
+    ) {}
     public function __invoke(ServerRequestInterface $request): ResponseInterface
     {
         $data = $this->service->publicCatalog((string) $this->route->getArgument('slug'));

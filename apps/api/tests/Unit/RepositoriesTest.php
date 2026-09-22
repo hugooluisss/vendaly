@@ -4,14 +4,71 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit;
 
-use App\Domain\Entity\{Business, BusinessMember, Category, Order, Product, User};
-use App\Infrastructure\Cycle\Repository\{CycleBusinessRepository, CycleCategoryRepository, CycleOrderRepository, CycleProductIngredientRepository, CycleProductRepository, CycleUserRepository};
+use App\Domain\Entity\{Business, BusinessMember, Category, Order, OrderItem, OrderItemOption, PaymentMethod, Product, User};
+use App\Infrastructure\Cycle\Repository\{CycleBusinessRepository, CycleCategoryRepository, CycleCustomerRepository, CycleOrderRepository, CyclePaymentMethodRepository, CycleProductIngredientRepository, CycleProductOptionRepository, CycleProductRepository, CycleUserRepository};
 use App\Domain\Service\{BusinessMemberGuard, CategoryService, CatalogService, OrderService};
 use DomainException;
 use PHPUnit\Framework\TestCase;
 
 final class RepositoriesTest extends TestCase
 {
+    public function testCustomerResolutionIsScopedAndAtomic(): void
+    {
+        $firstBusiness = $this->createBusiness();
+        $secondBusiness = $this->createBusiness();
+        $repository = new CycleCustomerRepository();
+        $phone = '+5255' . random_int(10000000, 99999999);
+        $first = $repository->findOrCreateByPhone((int) $firstBusiness->id, $phone);
+        self::assertSame($first->id, $repository->findOrCreateByPhone((int) $firstBusiness->id, $phone)->id);
+        self::assertNotSame($first->id, $repository->findOrCreateByPhone((int) $secondBusiness->id, $phone)->id);
+        self::assertCount(1, $repository->findByIdsForBusiness((int) $firstBusiness->id, [(int) $first->id]));
+        self::assertSame([], $repository->findByIdsForBusiness((int) $secondBusiness->id, [(int) $first->id]));
+
+        $concurrentPhone = '+5255' . random_int(10000000, 99999999);
+        $script = 'require "vendor/autoload.php"; echo (new \\App\\Infrastructure\\Cycle\\Repository\\CycleCustomerRepository())->findOrCreateByPhone((int) $argv[1], $argv[2])->id;';
+        $processes = [];
+        foreach ([1, 2] as $_) {
+            $processes[] = proc_open(['php', '-r', $script, (string) $firstBusiness->id, $concurrentPhone], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            $outputs[] = $pipes;
+        }
+        $ids = [];
+        foreach ($processes as $index => $process) {
+            $ids[] = (int) stream_get_contents($outputs[$index][1]);
+            $error = stream_get_contents($outputs[$index][2]);
+            fclose($outputs[$index][1]);
+            fclose($outputs[$index][2]);
+            self::assertSame(0, proc_close($process), $error);
+        }
+        self::assertSame($ids[0], $ids[1]);
+        $pdo = new \PDO(getenv('DATABASE_URL'), getenv('POSTGRES_USER'), getenv('POSTGRES_PASSWORD'));
+        $query = $pdo->prepare('SELECT COUNT(*) FROM customers WHERE business_id = ? AND phone = ?');
+        $query->execute([$firstBusiness->id, $concurrentPhone]);
+        self::assertSame(1, (int) $query->fetchColumn());
+    }
+
+    public function testOrdersFromSamePhoneShareCustomer(): void
+    {
+        $business = $this->createBusiness(true, '+525500000000');
+        $category = new Category();
+        $category->businessId = (int) $business->id;
+        $category->name = 'Food';
+        (new CycleCategoryRepository())->create($category);
+        $product = new Product();
+        $product->businessId = (int) $business->id;
+        $product->categoryId = (int) $category->id;
+        $product->name = 'Taco';
+        $product->createdAt = date(DATE_ATOM);
+        (new CycleProductRepository())->create($product);
+        $service = new OrderService(new CycleBusinessRepository(), new CycleProductRepository(), new CycleOrderRepository());
+        $phone = '+5255' . random_int(10000000, 99999999);
+        $input = ['phone' => $phone, 'fulfillment_type' => 'pickup', 'items' => [['product_id' => $product->id, 'quantity' => 1]]];
+        $first = $service->create($business->slug, $input)['order'];
+        $second = $service->create($business->slug, $input)['order'];
+        self::assertNotNull($first->customerId);
+        self::assertSame($first->customerId, $second->customerId);
+        self::assertSame($phone, (new CycleCustomerRepository())->findByIdsForBusiness((int) $business->id, [$first->customerId])[$first->customerId]->phone);
+    }
+
     public function testUserCreateAndFetchById(): void
     {
         $repository = new CycleUserRepository();
@@ -158,6 +215,26 @@ final class RepositoriesTest extends TestCase
         self::assertSame([(int) $product->id => ['Onion']], $ingredients->findByProductIds([(int) $product->id]));
     }
 
+    public function testPaymentMethodsCreateFetchAndOrderByPosition(): void
+    {
+        $business = $this->createBusiness(); $repository = new CyclePaymentMethodRepository();
+        $second = new PaymentMethod(); $second->businessId = (int) $business->id; $second->name = 'Tarjeta'; $second->position = 1; $repository->create($second);
+        $first = new PaymentMethod(); $first->businessId = (int) $business->id; $first->name = 'Efectivo'; $first->position = 0; $repository->create($first);
+        self::assertSame(['Efectivo', 'Tarjeta'], array_map(static fn(PaymentMethod $m): string => $m->name, $repository->findByBusinessId((int) $business->id)));
+    }
+
+    public function testProductOptionsReplaceAndFetchWithValues(): void
+    {
+        $business = $this->createBusiness();
+        $category = new Category(); $category->businessId = (int) $business->id; $category->name = 'Food'; (new CycleCategoryRepository())->create($category);
+        $product = new Product(); $product->businessId = (int) $business->id; $product->categoryId = (int) $category->id; $product->name = 'Coffee'; $product->createdAt = date(DATE_ATOM); (new CycleProductRepository())->create($product);
+        $options = new CycleProductOptionRepository();
+        $options->replaceForProduct((int) $product->id, [['name' => 'Sugar', 'selection_type' => 'single', 'required' => true, 'values' => [['name' => 'Brown sugar', 'price_delta' => '0']]]]);
+        $found = $options->findByProductIds([(int) $product->id]);
+        self::assertSame('Sugar', $found[$product->id][0]->name);
+        self::assertSame('Brown sugar', $found[$product->id][0]->values[0]->name);
+    }
+
     public function testOrderCreateAndFetchById(): void
     {
         $business = $this->createBusiness();
@@ -172,6 +249,41 @@ final class RepositoriesTest extends TestCase
         self::assertNotNull($found);
         self::assertSame('12.50', $found->total);
         self::assertSame('No onions', $found->customerNote);
+    }
+
+    public function testOrderNumbersAreSequentialPerBusiness(): void
+    {
+        $firstBusiness = $this->createBusiness();
+        $secondBusiness = $this->createBusiness();
+        $repository = new CycleOrderRepository();
+        $orders = [];
+        foreach ([$firstBusiness, $firstBusiness, $secondBusiness] as $business) {
+            $order = new Order(); $order->businessId = (int) $business->id; $order->createdAt = date(DATE_ATOM); $repository->createWithItems($order, []); $orders[] = $order;
+        }
+        self::assertSame(1, $orders[0]->orderNumber);
+        self::assertSame(2, $orders[1]->orderNumber);
+        self::assertSame(1, $orders[2]->orderNumber);
+    }
+
+    public function testMigrationBackfillLeavesOrdersNumberedAndStatused(): void
+    {
+        $pdo = new \PDO(getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly', getenv('POSTGRES_USER') ?: 'vendaly', getenv('POSTGRES_PASSWORD') ?: 'vendaly');
+        self::assertSame(0, (int) $pdo->query('SELECT count(*) FROM orders WHERE order_number IS NULL OR status_id IS NULL')->fetchColumn());
+        self::assertSame(0, (int) $pdo->query("SELECT count(*) FROM businesses b WHERE EXISTS (SELECT 1 FROM orders o WHERE o.business_id = b.id) AND EXISTS (SELECT 1 FROM (VALUES ('Creado'), ('Elaborando'), ('Entregado'), ('Cancelado')) v(name) WHERE NOT EXISTS (SELECT 1 FROM order_statuses s WHERE s.business_id = b.id AND s.name = v.name))")->fetchColumn());
+    }
+
+    public function testOrderItemOptionsArePersistedAsSnapshots(): void
+    {
+        $business = $this->createBusiness();
+        $category = new Category(); $category->businessId = (int) $business->id; $category->name = 'Food'; (new CycleCategoryRepository())->create($category);
+        $product = new Product(); $product->businessId = (int) $business->id; $product->categoryId = (int) $category->id; $product->name = 'Coffee'; $product->createdAt = date(DATE_ATOM); (new CycleProductRepository())->create($product);
+        $order = new Order(); $order->businessId = (int) $business->id; $order->createdAt = date(DATE_ATOM);
+        $item = new OrderItem(); $item->productId = (int) $product->id; $item->productNameSnapshot = 'Coffee'; $item->unitPriceSnapshot = '65.00';
+        $option = new OrderItemOption(); $option->optionName = 'Add-on'; $option->valueName = 'Cream'; $option->priceDeltaSnapshot = '15.00';
+        (new CycleOrderRepository())->createWithItems($order, [$item], [[$option]]);
+        $pdo = new \PDO(getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly', getenv('POSTGRES_USER') ?: 'vendaly', getenv('POSTGRES_PASSWORD') ?: 'vendaly');
+        $row = $pdo->query('SELECT option_name, value_name, price_delta_snapshot FROM order_item_options WHERE order_item_id = ' . (int) $item->id)->fetch(\PDO::FETCH_ASSOC);
+        self::assertSame(['option_name' => 'Add-on', 'value_name' => 'Cream', 'price_delta_snapshot' => '15.00'], $row);
     }
 
     public function testOrderListingFiltersInSqlAndIncludesItems(): void

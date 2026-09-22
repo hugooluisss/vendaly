@@ -14,4 +14,8 @@ export interface Product {
   position: number;
   image_url?: string | null;
   ingredients: string[];
+  options: ProductOption[];
 }
+
+export interface ProductOptionValue { id?: number; name: string; price_delta: number | string; position?: number; }
+export interface ProductOption { id?: number; name: string; selection_type: 'single' | 'multiple'; required: boolean; position?: number; values: ProductOptionValue[]; }

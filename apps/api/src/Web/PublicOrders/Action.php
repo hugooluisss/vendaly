@@ -14,8 +14,7 @@ final readonly class Action
         private OrderService $service,
         private ResponseFactoryInterface $responses,
         private StreamFactoryInterface $streams,
-    ) {
-    }
+    ) {}
     public function __invoke(ServerRequestInterface $request): ResponseInterface
     {
         try {

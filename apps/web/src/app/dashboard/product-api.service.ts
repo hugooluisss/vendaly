@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { map } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { Product } from './catalog.models';
+import { Product, ProductOption } from './catalog.models';
 
 export interface ProductInput {
   category_id: number;
@@ -11,12 +11,13 @@ export interface ProductInput {
   price?: number | null;
   is_active?: boolean;
   ingredients?: string[];
+  options?: ProductOption[];
 }
 
 export function productForm(input: ProductInput, image?: File): FormData {
   const body = new FormData();
   Object.entries(input).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) body.append(key, key === 'ingredients' ? JSON.stringify(value) : String(value));
+    if (value !== undefined && value !== null) body.append(key, ['ingredients', 'options'].includes(key) ? JSON.stringify(value) : String(value));
   });
   if (image) body.append('image', image, image.name);
   return body;

@@ -13,4 +13,8 @@ export class OrderApiService {
     if (to) params = params.set('to', to);
     return this.http.get<OrderList>(`${environment.apiBaseUrl}/businesses/${businessId}/orders`, { params });
   }
+
+  updateStatus(businessId: number, orderId: number, statusId: number) {
+    return this.http.patch<void>(`${environment.apiBaseUrl}/businesses/${businessId}/orders/${orderId}/status`, { status_id: statusId });
+  }
 }

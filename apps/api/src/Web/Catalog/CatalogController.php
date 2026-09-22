@@ -13,9 +13,7 @@ use Yiisoft\Router\CurrentRoute;
 
 final readonly class CatalogController
 {
-    public function __construct(private CategoryService $categories, private ProductService $products, private ResponseFactoryInterface $responses, private StreamFactoryInterface $streams, private CurrentRoute $route)
-    {
-    }
+    public function __construct(private CategoryService $categories, private ProductService $products, private ResponseFactoryInterface $responses, private StreamFactoryInterface $streams, private CurrentRoute $route) {}
     public function categories(ServerRequestInterface $request): ResponseInterface
     {
         return $this->run(fn() => [
@@ -121,6 +119,9 @@ final readonly class CatalogController
             if (is_string($parsed['ingredients'] ?? null)) {
                 $parsed['ingredients'] = json_decode($parsed['ingredients'], true);
             }
+            if (is_string($parsed['options'] ?? null)) {
+                $parsed['options'] = json_decode($parsed['options'], true);
+            }
             return $parsed;
         }
         $body = json_decode((string) $request->getBody(), true);
@@ -137,8 +138,20 @@ final readonly class CatalogController
             $file->getClientMediaType() ?: 'application/octet-stream',
         ];
     }
-    private function uid(ServerRequestInterface $request): int { return (int) $request->getAttribute('user_id'); }
-    private function bid(): int { return (int) $this->route->getArgument('businessId'); }
-    private function id(): int { return (int) $this->route->getArgument('id'); }
-    private function json(array $data, int $status): ResponseInterface { return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')->withBody($this->streams->createStream(json_encode($data, JSON_THROW_ON_ERROR))); }
+    private function uid(ServerRequestInterface $request): int
+    {
+        return (int) $request->getAttribute('user_id');
+    }
+    private function bid(): int
+    {
+        return (int) $this->route->getArgument('businessId');
+    }
+    private function id(): int
+    {
+        return (int) $this->route->getArgument('id');
+    }
+    private function json(array $data, int $status): ResponseInterface
+    {
+        return $this->responses->createResponse($status)->withHeader('Content-Type', 'application/json')->withBody($this->streams->createStream(json_encode($data, JSON_THROW_ON_ERROR)));
+    }
 }

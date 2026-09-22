@@ -30,4 +30,8 @@ class Product
     public string $createdAt = '';
     #[Column('datetime', name: 'deleted_at', nullable: true)]
     public ?string $deletedAt = null;
+    /** @var string[] */
+    public array $ingredients = [];
+    /** @var ProductOption[] */
+    public array $options = [];
 }

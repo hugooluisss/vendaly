@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Service;
 
-use App\Domain\Entity\{Business, BusinessHours, BusinessMember};
-use App\Domain\Repository\{BusinessManagementRepositoryInterface, ObjectStorageInterface};
+use App\Domain\Entity\{Business, BusinessHours, BusinessMember, OrderStatus, PaymentMethod};
+use App\Domain\Repository\{BusinessManagementRepositoryInterface, ObjectStorageInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface};
 use DomainException;
 
 final readonly class BusinessService
@@ -16,6 +16,8 @@ final readonly class BusinessService
         private BusinessManagementRepositoryInterface $businesses,
         private BusinessMemberGuard $guard,
         private ObjectStorageInterface $storage,
+        private ?PaymentMethodRepositoryInterface $paymentMethods = null,
+        private ?OrderStatusRepositoryInterface $orderStatuses = null,
     ) {
     }
 
@@ -35,6 +37,24 @@ final readonly class BusinessService
         $business->slug = $slug;
         $business->createdAt = date(DATE_ATOM);
         $business = $this->businesses->create($business);
+        if ($this->paymentMethods !== null) {
+            $method = new PaymentMethod();
+            $method->businessId = (int) $business->id;
+            $method->name = 'Efectivo';
+            $this->paymentMethods->create($method);
+        }
+        if ($this->orderStatuses !== null) {
+            foreach (OrderStatus::defaults() as $defaultData) {
+                $status = new OrderStatus();
+                $status->businessId = (int) $business->id;
+                $status->name = $defaultData['name'];
+                $status->color = $defaultData['color'];
+                $status->isTerminal = $defaultData['is_terminal'];
+                $status->isDefault = $defaultData['is_default'];
+                $status->position = $defaultData['position'];
+                $this->orderStatuses->create($status);
+            }
+        }
         $member = new BusinessMember();
         $member->businessId = (int) $business->id;
         $member->userId = $userId;
@@ -65,7 +85,7 @@ final readonly class BusinessService
         }
         if (array_key_exists('whatsapp_number', $input)) {
             $number = trim((string) $input['whatsapp_number']);
-            if ($number !== '' && !preg_match('/^\+?[1-9][0-9 ()-]{6,20}$/', $number)) {
+            if ($number !== '' && !PhoneNumber::isValid($number)) {
                 throw new DomainException('Invalid whatsapp_number.');
             }
             $business->whatsappNumber = $number === '' ? null : $number;
@@ -82,6 +102,22 @@ final readonly class BusinessService
         }
         if (array_key_exists('location', $input)) {
             $business->location = $input['location'] === null ? null : trim((string) $input['location']);
+        }
+        foreach (['pickup_enabled' => 'pickupEnabled', 'delivery_enabled' => 'deliveryEnabled', 'dine_in_enabled' => 'dineInEnabled'] as $field => $property) {
+            if (array_key_exists($field, $input)) {
+                $business->{$property} = is_string($input[$field]) ? filter_var($input[$field], FILTER_VALIDATE_BOOLEAN) : (bool) $input[$field];
+            }
+        }
+        foreach (['pickup_fee' => 'pickupFee', 'delivery_fee' => 'deliveryFee', 'dine_in_fee' => 'dineInFee'] as $field => $property) {
+            if (array_key_exists($field, $input)) {
+                $fee = $input[$field];
+                if ($fee === null || $fee === '') $business->{$property} = null;
+                elseif (!is_numeric($fee) || (float) $fee < 0) throw new DomainException('Invalid fulfillment fee.');
+                else $business->{$property} = number_format((float) $fee, 2, '.', '');
+            }
+        }
+        if (!$business->pickupEnabled && !$business->deliveryEnabled && !$business->dineInEnabled) {
+            throw new DomainException('At least one fulfillment method must be enabled.');
         }
         if (array_key_exists('latitude', $input) || array_key_exists('longitude', $input)) {
             $latitude = $input['latitude'] ?? null;
@@ -138,8 +174,154 @@ final readonly class BusinessService
         if ($published && !$business->isPublished && ($business->latitude === null || $business->longitude === null)) {
             throw new DomainException('Set a location on the map before publishing.');
         }
+        if ($published && !$business->pickupEnabled && !$business->deliveryEnabled && !$business->dineInEnabled) {
+            throw new DomainException('At least one fulfillment method must be enabled.');
+        }
+        if ($published && $this->paymentMethods !== null && $this->paymentMethods->findByBusinessId($businessId) === []) {
+            throw new DomainException('At least one payment method must be configured.');
+        }
         $business->isPublished = $published;
         return $this->businesses->update($business);
+    }
+
+    /** @return PaymentMethod[] */
+    public function listPaymentMethods(int $userId, int $businessId): array
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        return $this->paymentMethods?->findByBusinessId($businessId) ?? [];
+    }
+    public function addPaymentMethod(int $userId, int $businessId, string $name): PaymentMethod
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $name = trim($name);
+        if ($name === '' || $this->paymentMethods === null) throw new DomainException('Payment method name is required.');
+        $method = new PaymentMethod(); $method->businessId = $businessId; $method->name = $name; $method->position = count($this->paymentMethods->findByBusinessId($businessId));
+        return $this->paymentMethods->create($method);
+    }
+    public function updatePaymentMethod(int $userId, int $businessId, int $id, array $input): PaymentMethod
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $method = $this->findPaymentMethod($businessId, $id);
+        if ($method === null || $this->paymentMethods === null) throw new DomainException('Payment method not found.');
+        if (array_key_exists('name', $input)) { $name = trim((string) $input['name']); if ($name === '') throw new DomainException('Payment method name is required.'); $method->name = $name; }
+        if (array_key_exists('position', $input)) $method->position = max(0, (int) $input['position']);
+        return $this->paymentMethods->update($method);
+    }
+    public function deletePaymentMethod(int $userId, int $businessId, int $id): void
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        if ($this->paymentMethods === null) throw new DomainException('Payment method not found.');
+        $methods = $this->paymentMethods->findByBusinessId($businessId);
+        $method = $this->findPaymentMethod($businessId, $id);
+        if ($method === null) throw new DomainException('Payment method not found.');
+        if (count($methods) < 2) throw new DomainException('At least one payment method must remain.');
+        $this->paymentMethods->delete($method);
+    }
+    private function findPaymentMethod(int $businessId, int $id): ?PaymentMethod
+    {
+        foreach ($this->paymentMethods?->findByBusinessId($businessId) ?? [] as $method) if ((int) $method->id === $id) return $method;
+        return null;
+    }
+
+    /** @return OrderStatus[] */
+    public function listOrderStatuses(int $userId, int $businessId): array
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        return $this->orderStatuses?->findByBusinessId($businessId) ?? [];
+    }
+
+    public function addOrderStatus(int $userId, int $businessId, array $input): OrderStatus
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $this->requireOrderStatuses();
+        $name = trim((string) ($input['name'] ?? ''));
+        $color = (string) ($input['color'] ?? '');
+        if ($name === '') throw new DomainException('Order status name is required.');
+        $this->validateStatusColor($color);
+        $status = new OrderStatus();
+        $status->businessId = $businessId;
+        $status->name = $name;
+        $status->color = $color;
+        $status->isTerminal = (bool) ($input['is_terminal'] ?? false);
+        $status->isDefault = false;
+        $status->position = count($this->orderStatuses->findByBusinessId($businessId));
+        return $this->orderStatuses->create($status);
+    }
+
+    public function updateOrderStatus(int $userId, int $businessId, int $id, array $input): OrderStatus
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $this->requireOrderStatuses();
+        $status = $this->findOrderStatus($businessId, $id);
+        if ($status === null) throw new DomainException('Order status not found.');
+        if (array_key_exists('name', $input)) {
+            $status->name = trim((string) $input['name']);
+            if ($status->name === '') throw new DomainException('Order status name is required.');
+        }
+        if (array_key_exists('color', $input)) {
+            $this->validateStatusColor((string) $input['color']);
+            $status->color = (string) $input['color'];
+        }
+        if (array_key_exists('is_terminal', $input)) $status->isTerminal = (bool) $input['is_terminal'];
+        if (array_key_exists('position', $input)) $status->position = max(0, (int) $input['position']);
+        return $this->orderStatuses->update($status);
+    }
+
+    public function reorderOrderStatuses(int $userId, int $businessId, array $positions): array
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $this->requireOrderStatuses();
+        $statuses = $this->orderStatuses->findByBusinessId($businessId);
+        foreach ($statuses as $status) {
+            if (array_key_exists((string) $status->id, $positions)) {
+                $status->position = max(0, (int) $positions[(string) $status->id]);
+                $this->orderStatuses->update($status);
+            }
+        }
+        return $this->orderStatuses->findByBusinessId($businessId);
+    }
+
+    public function setDefaultOrderStatus(int $userId, int $businessId, int $id): OrderStatus
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $this->requireOrderStatuses();
+        $status = $this->findOrderStatus($businessId, $id);
+        if ($status === null) throw new DomainException('Order status not found.');
+        foreach ($this->orderStatuses->findByBusinessId($businessId) as $current) {
+            if ($current->isDefault && $current->id !== $status->id) {
+                $current->isDefault = false;
+                $this->orderStatuses->update($current);
+            }
+        }
+        $status->isDefault = true;
+        return $this->orderStatuses->update($status);
+    }
+
+    public function deleteOrderStatus(int $userId, int $businessId, int $id): void
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $this->requireOrderStatuses();
+        $statuses = $this->orderStatuses->findByBusinessId($businessId);
+        $status = $this->findOrderStatus($businessId, $id);
+        if ($status === null) throw new DomainException('Order status not found.');
+        if (count($statuses) < 2) throw new DomainException('At least one order status must remain.');
+        if ($status->isDefault) throw new DomainException('Set a different default status first.');
+        if ($this->orderStatuses->existsOrderWithStatus($id)) throw new DomainException('Order status is assigned to an order.');
+        $this->orderStatuses->delete($status);
+    }
+
+    private function findOrderStatus(int $businessId, int $id): ?OrderStatus
+    {
+        foreach ($this->orderStatuses?->findByBusinessId($businessId) ?? [] as $status) if ((int) $status->id === $id) return $status;
+        return null;
+    }
+    private function requireOrderStatuses(): void
+    {
+        if ($this->orderStatuses === null) throw new DomainException('Order statuses are unavailable.');
+    }
+    private function validateStatusColor(string $color): void
+    {
+        if (preg_match('/^#[0-9A-Fa-f]{6}$/', $color) !== 1) throw new DomainException('Invalid order status color.');
     }
 
     private function uniqueSlug(string $base): string

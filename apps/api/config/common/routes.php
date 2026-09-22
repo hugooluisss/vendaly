@@ -59,6 +59,16 @@ return [
                 ->middleware(AccessTokenMiddleware::class)
                 ->action([BusinessController::class, 'publish'])
                 ->name('business.publish'),
+            Route::get('/businesses/{id:\d+}/payment-methods')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'paymentMethods'])->name('payment-method.list'),
+            Route::post('/businesses/{id:\d+}/payment-methods')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'createPaymentMethod'])->name('payment-method.create'),
+            Route::patch('/businesses/{id:\d+}/payment-methods/{methodId:\d+}')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'updatePaymentMethod'])->name('payment-method.update'),
+            Route::delete('/businesses/{id:\d+}/payment-methods/{methodId:\d+}')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'deletePaymentMethod'])->name('payment-method.delete'),
+            Route::get('/businesses/{id:\d+}/order-statuses')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'orderStatuses'])->name('order-status.list'),
+            Route::post('/businesses/{id:\d+}/order-statuses')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'createOrderStatus'])->name('order-status.create'),
+            Route::patch('/businesses/{id:\d+}/order-statuses/{statusId:\d+}')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'updateOrderStatus'])->name('order-status.update'),
+            Route::post('/businesses/{id:\d+}/order-statuses/reorder')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'reorderOrderStatuses'])->name('order-status.reorder'),
+            Route::post('/businesses/{id:\d+}/order-statuses/{statusId:\d+}/default')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'setDefaultOrderStatus'])->name('order-status.default'),
+            Route::delete('/businesses/{id:\d+}/order-statuses/{statusId:\d+}')->middleware(AccessTokenMiddleware::class)->action([BusinessController::class, 'deleteOrderStatus'])->name('order-status.delete'),
             Route::get('/businesses/{businessId:\d+}/categories')
                 ->middleware(AccessTokenMiddleware::class)
                 ->action([CatalogController::class, 'categories'])
@@ -107,5 +117,9 @@ return [
                 ->middleware(AccessTokenMiddleware::class)
                 ->action([App\Web\Orders\OrderController::class, 'list'])
                 ->name('order.list'),
+            Route::patch('/businesses/{businessId:\d+}/orders/{orderId:\d+}/status')
+                ->middleware(AccessTokenMiddleware::class)
+                ->action([App\Web\Orders\OrderController::class, 'changeStatus'])
+                ->name('order.status'),
         ),
 ];

@@ -44,10 +44,22 @@ final class DirectoryBusinesses implements BusinessRepositoryInterface
     public ?array $position = null;
     public ?string $name = null;
     public function __construct(private array $businesses) {}
-    public function create(Business $entity): Business { return $entity; }
-    public function findById(int $id): ?Business { return null; }
-    public function findPublishedBySlug(string $slug): ?Business { return null; }
-    public function findHours(int $businessId): array { return []; }
+    public function create(Business $entity): Business
+    {
+        return $entity;
+    }
+    public function findById(int $id): ?Business
+    {
+        return null;
+    }
+    public function findPublishedBySlug(string $slug): ?Business
+    {
+        return null;
+    }
+    public function findHours(int $businessId): array
+    {
+        return [];
+    }
     public function findPublishedDirectory(?string $category, ?string $location, ?float $latitude = null, ?float $longitude = null, ?string $name = null): array
     {
         $this->position = $latitude === null || $longitude === null ? null : [$latitude, $longitude];

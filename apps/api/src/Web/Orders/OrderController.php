@@ -28,6 +28,23 @@ final readonly class OrderController
         }
     }
 
+    public function changeStatus(ServerRequestInterface $request): ResponseInterface
+    {
+        try {
+            $body = $request->getParsedBody();
+            if (!is_array($body)) $body = json_decode((string) $request->getBody(), true);
+            $order = $this->orders->changeStatus(
+                (int) $request->getAttribute('user_id'),
+                (int) $this->route->getArgument('businessId'),
+                (int) $this->route->getArgument('orderId'),
+                (int) ($body['status_id'] ?? 0),
+            );
+            return $this->json(['order' => ['id' => $order->id, 'order_number' => $order->orderNumber, 'status_id' => $order->statusId]]);
+        } catch (DomainException $e) {
+            return $this->json(['error' => $e->getMessage()], $e instanceof ForbiddenException ? 403 : 422);
+        }
+    }
+
     private function date(ServerRequestInterface $request, string $name): ?string
     {
         $value = $request->getQueryParams()[$name] ?? null;
@@ -41,7 +58,10 @@ final readonly class OrderController
     private function map(array $entry): array
     {
         $order = $entry['order'];
-        return ['id' => $order->id, 'created_at' => $order->createdAt, 'customer_note' => $order->customerNote, 'total' => $order->total, 'items' => array_map(static fn($item): array => ['name' => $item->productNameSnapshot, 'quantity' => $item->quantity, 'note' => $item->note], $entry['items'])];
+        $mapped = ['id' => $order->id, 'created_at' => $order->createdAt, 'customer_note' => $order->customerNote, 'customer_phone' => $entry['customer_phone'] ?? null, 'total' => $order->total, 'items' => array_map(static fn($item): array => ['name' => $item->productNameSnapshot, 'quantity' => $item->quantity, 'note' => $item->note], $entry['items'])];
+        if ($order->orderNumber !== null) $mapped['order_number'] = $order->orderNumber;
+        if (($entry['status'] ?? null) !== null) $mapped['status'] = ['id' => $entry['status']->id, 'name' => $entry['status']->name, 'color' => $entry['status']->color];
+        return $mapped;
     }
 
     private function json(array $data, int $status = 200): ResponseInterface

@@ -25,6 +25,11 @@ export class MapComponent implements AfterViewInit, OnChanges, OnDestroy {
   private markerLayer = L.layerGroup();
 
   ngAfterViewInit(): void {
+    L.Icon.Default.mergeOptions({
+      iconUrl: '/leaflet/marker-icon.png',
+      iconRetinaUrl: '/leaflet/marker-icon-2x.png',
+      shadowUrl: '/leaflet/marker-shadow.png',
+    });
     this.map = L.map(this.mapElement.nativeElement).setView([this.center.lat, this.center.lng], this.zoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
@@ -45,21 +50,29 @@ export class MapComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.map = undefined;
   }
 
+  centerPinToView(): void {
+    if (!this.map || this.mode !== 'pin' || !this.pinMarker) return;
+    const { lat, lng } = this.map.getCenter();
+    this.pinMarker.setLatLng([lat, lng]);
+    this.positionChanged.emit({ lat, lng });
+  }
+
   private renderMarkers(): void {
     if (!this.map) return;
-    this.markerLayer.clearLayers();
 
     if (this.mode === 'pin') {
       const position = this.initialPosition ?? this.center;
-      L.marker([position.lat, position.lng], { draggable: true })
+      if (!this.pinMarker) this.pinMarker = L.marker([position.lat, position.lng], { draggable: true })
         .on('dragend', (event) => {
           const { lat, lng } = event.target.getLatLng();
           this.positionChanged.emit({ lat, lng });
-        })
-        .addTo(this.markerLayer);
+        });
+      this.pinMarker.setLatLng([position.lat, position.lng]).addTo(this.markerLayer);
       return;
     }
 
+    this.markerLayer.clearLayers();
+    this.pinMarker = undefined;
     this.markers.forEach((marker, index) => {
       const leafletMarker = L.marker([marker.lat, marker.lng]);
       if (marker.label) leafletMarker.bindPopup(marker.label);
@@ -67,4 +80,6 @@ export class MapComponent implements AfterViewInit, OnChanges, OnDestroy {
       leafletMarker.addTo(this.markerLayer);
     });
   }
+
+  private pinMarker?: L.Marker;
 }

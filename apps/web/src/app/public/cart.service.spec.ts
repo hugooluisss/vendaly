@@ -7,7 +7,7 @@ const priceless: PublicProduct = { id: 2, name: 'Servicio', price: null, ingredi
 
 describe('CartService', () => {
   let cart: CartService;
-  beforeEach(() => { cart = TestBed.inject(CartService); });
+  beforeEach(() => { localStorage.removeItem('vendaly.cart'); cart = TestBed.inject(CartService); });
 
   it('adds and increments an item', () => {
     cart.add(priced); cart.add(priced);
@@ -27,5 +27,18 @@ describe('CartService', () => {
     expect(cart.items.length).toBe(2);
     expect(cart.items[1].note).toBe('A medida');
     expect(cart.total()).toBe(80);
+  });
+
+  it('includes selected option deltas and keeps different selections separate', () => {
+    const product: PublicProduct = { id: 3, name: 'Café', price: 50, ingredients: [], options: [{ id: 1, name: 'Extra', selection_type: 'multiple', required: false, values: [{ id: 9, name: 'Crema', price_delta: 15 }] }] };
+    cart.add(product, [9]); cart.add(product, []);
+    expect(cart.items.length).toBe(2);
+    expect(cart.total()).toBe(115);
+  });
+
+  it('persists mutations and hydrates a new instance', () => {
+    cart.add(priced);
+    expect(JSON.parse(localStorage.getItem('vendaly.cart')!)).toEqual(cart.items);
+    expect(new CartService().items).toEqual(cart.items);
   });
 });

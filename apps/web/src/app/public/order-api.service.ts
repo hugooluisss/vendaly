@@ -3,11 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { environment } from '../../environments/environment';
 import { CartItem } from './public.models';
 import { createOrderPayload } from './order-payload';
+import { DeliveryLocation } from './delivery-location.service';
 
 @Injectable({ providedIn: 'root' })
 export class OrderApiService {
   private readonly http = inject(HttpClient);
-  create(slug: string, items: CartItem[], total: number) {
-    return this.http.post<{ whatsapp_url: string }>(`${environment.apiBaseUrl}/public/orders`, createOrderPayload(slug, items, total));
+  create(slug: string, items: CartItem[], total: number, fulfillmentType: string, location: DeliveryLocation, paymentMethodId: number | null, phone: string) {
+    return this.http.post<{ whatsapp_url: string }>(`${environment.apiBaseUrl}/public/orders`, createOrderPayload(slug, items, total, fulfillmentType, location, paymentMethodId, phone));
   }
 }
