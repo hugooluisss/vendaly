@@ -22,8 +22,8 @@ The API runs on `:8080`, web app on `:4200`, PostgreSQL on `:5432`, and MinIO on
 After the first build, install PHP dependencies once and run migrations:
 
 ```bash
-docker exec -u root -w /app docker-api-1 composer install --no-interaction
-docker exec docker-api-1 php bin/migrate.php
+docker exec -u root -w /app vendaly-api-1 composer install --no-interaction
+docker exec vendaly-api-1 php bin/migrate.php
 ```
 
 For a web app served under a URL path prefix behind a reverse proxy on a shared subdomain, optionally copy `docker/.env.example` to `docker/.env` and set `WEB_SERVE_FLAGS`. This local-only override is gitignored. Leave it unset to serve the app normally at the root path.

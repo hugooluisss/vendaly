@@ -14,16 +14,16 @@ All commands assume the stack is running via `docker compose -f docker/docker-co
 
 ### Backend (`apps/api`)
 
-Run everything through the `docker-api-1` container — the host PHP install may be missing extensions the project needs:
+Run everything through the `vendaly-api-1` container — the host PHP install may be missing extensions the project needs:
 
 ```bash
-docker exec docker-api-1 vendor/bin/codecept run Unit                          # full unit suite
-docker exec docker-api-1 vendor/bin/codecept run Unit RepositoriesTest         # one test class
-docker exec docker-api-1 vendor/bin/codecept run Unit RepositoriesTest:"Active products block category soft delete"  # one test method
-docker exec docker-api-1 php bin/migrate.php                                   # run pending Cycle ORM migrations
-docker exec docker-api-1 vendor/bin/php-cs-fixer fix                           # code style
-docker exec docker-api-1 vendor/bin/rector process                             # automated refactors
-docker exec docker-api-1 vendor/bin/psalm                                      # static analysis
+docker exec vendaly-api-1 vendor/bin/codecept run Unit                          # full unit suite
+docker exec vendaly-api-1 vendor/bin/codecept run Unit RepositoriesTest         # one test class
+docker exec vendaly-api-1 vendor/bin/codecept run Unit RepositoriesTest:"Active products block category soft delete"  # one test method
+docker exec vendaly-api-1 php bin/migrate.php                                   # run pending Cycle ORM migrations
+docker exec vendaly-api-1 vendor/bin/php-cs-fixer fix                           # code style
+docker exec vendaly-api-1 vendor/bin/rector process                             # automated refactors
+docker exec vendaly-api-1 vendor/bin/psalm                                      # static analysis
 ```
 
 Test suites are Codeception (`Unit`, `Functional`, `Console`, `Web`, configured in `codeception.yml` / `tests/*.suite.yml`), with PHPUnit-style test classes under `tests/Unit/`. **There is no separate test database** — `DATABASE_URL` in `docker-compose.yml` points the test run at the same Postgres instance the app uses, so running the suite leaves behind rows in `businesses`/`users`/etc. Expect (and don't be surprised by) leftover `Test business`, `DirectoryTest*`, `geo-*`, `Smoke *` rows in the dev DB from prior runs.
