@@ -25,10 +25,11 @@ export class MapComponent implements AfterViewInit, OnChanges, OnDestroy {
   private markerLayer = L.layerGroup();
 
   ngAfterViewInit(): void {
+    delete (L.Icon.Default.prototype as L.Icon.Default & { _getIconUrl?: unknown })._getIconUrl;
     L.Icon.Default.mergeOptions({
-      iconUrl: '/leaflet/marker-icon.png',
-      iconRetinaUrl: '/leaflet/marker-icon-2x.png',
-      shadowUrl: '/leaflet/marker-shadow.png',
+      iconUrl: 'leaflet/marker-icon.png',
+      iconRetinaUrl: 'leaflet/marker-icon-2x.png',
+      shadowUrl: 'leaflet/marker-shadow.png',
     });
     this.map = L.map(this.mapElement.nativeElement).setView([this.center.lat, this.center.lng], this.zoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
