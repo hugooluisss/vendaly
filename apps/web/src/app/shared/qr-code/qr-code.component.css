@@ -1,0 +1,3 @@
+:host { display: block; }
+canvas { display: block; max-width: 100%; height: auto; }
+canvas[hidden] { display: none; }
