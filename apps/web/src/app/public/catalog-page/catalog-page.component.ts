@@ -19,6 +19,12 @@ export class CatalogPageComponent {
   selections = new Map<number, number[]>();
   pendingProduct: PublicProduct | null = null;
 
+  constructor() {
+    if (this.route.snapshot.queryParamMap.get('src') === 'qr') {
+      this.catalogApi.recordScan(this.slug).subscribe({ error: () => undefined });
+    }
+  }
+
   selectCategory(categoryId: number): void { this.activeCategory = categoryId; }
   openOrder(): void { this.router.navigate(['/public/catalog', this.slug, 'order']); }
   addProduct(product: PublicProduct): void { if (product.options?.length) { this.pendingProduct = product; this.selections.set(product.id, []); } else this.cart.add(product); }

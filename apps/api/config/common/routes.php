@@ -19,6 +19,7 @@ return [
                 ->action(Web\Health\Action::class)
                 ->name('health'),
             Route::get('/public/catalog/{slug:[a-z0-9-]+}')->action(App\Web\PublicCatalog\Action::class)->name('public.catalog'),
+            Route::post('/public/catalog/{slug:[a-z0-9-]+}/scans')->action(App\Web\PublicCatalogScan\Action::class)->name('public.catalog.scan'),
             Route::get('/public/businesses')->action(App\Web\PublicBusinesses\Action::class)->name('public.businesses'),
             Route::post('/public/orders')->action(App\Web\PublicOrders\Action::class)->name('public.orders'),
             Route::post('/auth/register')
@@ -42,6 +43,7 @@ return [
                 ->middleware(AccessTokenMiddleware::class)
                 ->action([BusinessController::class, 'me'])
                 ->name('business.me'),
+            Route::get('/businesses/{id:\d+}/scans')->middleware(AccessTokenMiddleware::class)->action(App\Web\BusinessScans\Action::class)->name('business.scans'),
             Route::patch('/businesses/{id:\d+}')
                 ->middleware(AccessTokenMiddleware::class)
                 ->action([BusinessController::class, 'update'])

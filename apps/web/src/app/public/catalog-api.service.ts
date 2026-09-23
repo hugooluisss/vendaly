@@ -7,4 +7,5 @@ import { PublicCatalog } from './public.models';
 export class CatalogApiService {
   private readonly http = inject(HttpClient);
   get(slug: string) { return this.http.get<PublicCatalog>(`${environment.apiBaseUrl}/public/catalog/${encodeURIComponent(slug)}`); }
+  recordScan(slug: string) { return this.http.post<void>(`${environment.apiBaseUrl}/public/catalog/${encodeURIComponent(slug)}/scans`, null); }
 }

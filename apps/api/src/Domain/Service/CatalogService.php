@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Service;
 
-use App\Domain\Repository\{BusinessRepositoryInterface, CategoryRepositoryInterface, PaymentMethodRepositoryInterface, ProductIngredientRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
+use App\Domain\Repository\{BusinessRepositoryInterface, CatalogScanRepositoryInterface, CategoryRepositoryInterface, PaymentMethodRepositoryInterface, ProductIngredientRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
+use DateTimeImmutable;
 
 final readonly class CatalogService
 {
@@ -15,6 +16,7 @@ final readonly class CatalogService
         private ?ProductIngredientRepositoryInterface $ingredients = null,
         private ?ProductOptionRepositoryInterface $options = null,
         private ?PaymentMethodRepositoryInterface $paymentMethods = null,
+        private ?CatalogScanRepositoryInterface $scans = null,
     ) {}
     public function publicCatalog(string $slug): ?array
     {
@@ -77,6 +79,30 @@ final readonly class CatalogService
                 'position' => $c->position,
                 'products' => $byCategory[$c->id] ?? [],
             ], $categories),
+        ];
+    }
+
+    public function recordScan(string $slug): bool
+    {
+        $business = $this->businesses->findPublishedBySlug($slug);
+        if ($business === null) {
+            return false;
+        }
+        if ($this->scans === null) {
+            throw new \LogicException('Catalog scan repository is not configured.');
+        }
+        $this->scans->record((int) $business->id);
+        return true;
+    }
+
+    public function scanStats(int $businessId, DateTimeImmutable $from, DateTimeImmutable $to): array
+    {
+        if ($this->scans === null) {
+            throw new \LogicException('Catalog scan repository is not configured.');
+        }
+        return [
+            'total' => $this->scans->countTotal($businessId),
+            'by_day' => $this->scans->countByDay($businessId, $from, $to),
         ];
     }
 }

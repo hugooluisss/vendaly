@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { BusinessApiService } from '../business-api.service';
@@ -7,6 +8,7 @@ import { ProductApiService } from '../product-api.service';
 import { Business } from '../business.models';
 import { ScanStats, ScanStatsService } from '../scan-stats.service';
 import { DashboardHomeComponent } from './dashboard-home.component';
+import { QrCodeComponent } from '../../shared/qr-code/qr-code.component';
 
 describe('DashboardHomeComponent', () => {
   function render(business: Business | undefined, stats: ScanStats = { total: 0, byDay: [] }) {
@@ -58,5 +60,17 @@ describe('DashboardHomeComponent', () => {
     expect(element.querySelector('.status')?.textContent).toContain('Sin publicar');
     expect(element.querySelector('.qr-panel app-qr-code')).toBeNull();
     expect(element.querySelector('.qr-panel')?.textContent).toContain('todavía no está publicado');
+  });
+
+  it('keeps the displayed catalog URL clean while adding the marker to the QR value', () => {
+    const { fixture, element } = render({ id: 4, name: 'Tienda', slug: 'tienda', is_published: true });
+    const component = fixture.componentInstance;
+    expect(component.publicCatalogUrl).toContain('/public/catalog/tienda');
+    expect(component.publicCatalogUrl).not.toContain('src=qr');
+    expect(component.publicCatalogQrUrl).toBe(`${component.publicCatalogUrl}?src=qr`);
+    expect(fixture.debugElement.query(By.directive(QrCodeComponent)).componentInstance.value).toBe(`${component.publicCatalogUrl}?src=qr`);
+    expect(element.querySelector('.catalog-url')?.textContent?.trim()).toBe(component.publicCatalogUrl);
+    expect(element.querySelector('.catalog-url')?.getAttribute('href')).toBe(component.publicCatalogUrl);
+    fixture.destroy();
   });
 });

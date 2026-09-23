@@ -19,6 +19,7 @@ export class DashboardHomeComponent {
   @ViewChild(QrCodeComponent) qrCode?: QrCodeComponent;
   business?: Business;
   publicCatalogUrl?: string;
+  get publicCatalogQrUrl(): string | undefined { return this.publicCatalogUrl ? `${this.publicCatalogUrl}?src=qr` : undefined; }
   categoryCount = 0; productCount = 0; activeProducts = 0; inactiveProducts = 0;
   scanTotal = 0;
   scanByDay: { date: string; count: number }[] = [];

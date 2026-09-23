@@ -5,13 +5,26 @@ declare(strict_types=1);
 namespace App\Tests\Unit;
 
 use App\Domain\Entity\{Business, BusinessMember, Category, Order, OrderItem, OrderItemOption, PaymentMethod, Product, User};
-use App\Infrastructure\Cycle\Repository\{CycleBusinessRepository, CycleCategoryRepository, CycleCustomerRepository, CycleOrderRepository, CyclePaymentMethodRepository, CycleProductIngredientRepository, CycleProductOptionRepository, CycleProductRepository, CycleUserRepository};
+use App\Infrastructure\Cycle\Repository\{CycleBusinessRepository, CycleCatalogScanRepository, CycleCategoryRepository, CycleCustomerRepository, CycleOrderRepository, CyclePaymentMethodRepository, CycleProductIngredientRepository, CycleProductOptionRepository, CycleProductRepository, CycleUserRepository};
 use App\Domain\Service\{BusinessMemberGuard, CategoryService, CatalogService, OrderService};
 use DomainException;
 use PHPUnit\Framework\TestCase;
 
 final class RepositoriesTest extends TestCase
 {
+    public function testCatalogScansCanBeRecordedAndCountedByDay(): void
+    {
+        $business = $this->createBusiness(true);
+        $repository = new CycleCatalogScanRepository();
+        $repository->record((int) $business->id);
+        $repository->record((int) $business->id);
+        self::assertSame(2, $repository->countTotal((int) $business->id));
+        $days = $repository->countByDay((int) $business->id, new \DateTimeImmutable('-1 day'), new \DateTimeImmutable('+1 day'));
+        self::assertCount(1, $days);
+        self::assertSame(2, $days[0]['count']);
+        self::assertMatchesRegularExpression('/^\\d{4}-\\d{2}-\\d{2}$/', $days[0]['date']);
+    }
+
     public function testCustomerResolutionIsScopedAndAtomic(): void
     {
         $firstBusiness = $this->createBusiness();

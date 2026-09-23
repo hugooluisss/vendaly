@@ -5,13 +5,29 @@ declare(strict_types=1);
 namespace App\Tests\Unit;
 
 use App\Domain\Entity\{Business, Category, Order, OrderItem, OrderItemOption, OrderStatus, PaymentMethod, Product, ProductOption, ProductOptionValue};
-use App\Domain\Repository\{BusinessRepositoryInterface, CategoryRepositoryInterface, OrderRepositoryInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
+use App\Domain\Repository\{BusinessRepositoryInterface, CatalogScanRepositoryInterface, CategoryRepositoryInterface, OrderRepositoryInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
 use App\Domain\Service\{CatalogService, OrderService, WhatsAppOrderLink};
 use DomainException;
 use PHPUnit\Framework\TestCase;
 
 final class PublicCatalogAndOrdersTest extends TestCase
 {
+    public function testCatalogScanServiceResolvesPublishedSlugAndReturnsStats(): void
+    {
+        $business = $this->business(true);
+        $scans = new class implements CatalogScanRepositoryInterface {
+            public array $recorded = [];
+            public function record(int $businessId): void { $this->recorded[] = $businessId; }
+            public function countTotal(int $businessId): int { return 3; }
+            public function countByDay(int $businessId, \DateTimeImmutable $from, \DateTimeImmutable $to): array { return [['date' => '2026-09-23', 'count' => 3]]; }
+        };
+        $service = new CatalogService(new FakeBusinesses($business), new FakeCategories(), new FakeProducts(), scans: $scans);
+        self::assertTrue($service->recordScan('shop'));
+        self::assertSame([(int) $business->id], $scans->recorded);
+        self::assertFalse((new CatalogService(new FakeBusinesses(null), new FakeCategories(), new FakeProducts(), scans: $scans))->recordScan('missing'));
+        self::assertSame(['total' => 3, 'by_day' => [['date' => '2026-09-23', 'count' => 3]]], $service->scanStats((int) $business->id, new \DateTimeImmutable('2026-09-23'), new \DateTimeImmutable('2026-09-23')));
+    }
+
     public function testOrderRequiresValidPhoneBeforePersistence(): void
     {
         $orders = new FakeOrders();
