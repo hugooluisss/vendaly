@@ -21,7 +21,6 @@ return [
             Route::get('/public/catalog/{slug:[a-z0-9-]+}')->action(App\Web\PublicCatalog\Action::class)->name('public.catalog'),
             Route::get('/public/businesses')->action(App\Web\PublicBusinesses\Action::class)->name('public.businesses'),
             Route::post('/public/orders')->action(App\Web\PublicOrders\Action::class)->name('public.orders'),
-            Route::get('/businesses/{id:\d+}/qr')->action(App\Web\BusinessQr\Action::class)->name('business.qr'),
             Route::post('/auth/register')
                 ->action([AuthController::class, 'register'])
                 ->name('auth.register'),

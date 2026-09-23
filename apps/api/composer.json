@@ -38,7 +38,6 @@
         "cycle/annotated": "^4.6",
         "cycle/migrations": "^4.3",
         "cycle/orm": "^2.18",
-        "endroid/qr-code": "^6.0",
         "firebase/php-jwt": "^6.11",
         "httpsoft/http-message": "^1.1.6",
         "psr/container": "^2.0.2",

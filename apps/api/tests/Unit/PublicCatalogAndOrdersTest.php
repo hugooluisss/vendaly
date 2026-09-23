@@ -6,7 +6,7 @@ namespace App\Tests\Unit;
 
 use App\Domain\Entity\{Business, Category, Order, OrderItem, OrderItemOption, OrderStatus, PaymentMethod, Product, ProductOption, ProductOptionValue};
 use App\Domain\Repository\{BusinessRepositoryInterface, CategoryRepositoryInterface, OrderRepositoryInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
-use App\Domain\Service\{CatalogService, OrderService, QrCodeService, WhatsAppOrderLink};
+use App\Domain\Service\{CatalogService, OrderService, WhatsAppOrderLink};
 use DomainException;
 use PHPUnit\Framework\TestCase;
 
@@ -272,14 +272,6 @@ final class PublicCatalogAndOrdersTest extends TestCase
         $catalog = (new CatalogService(new FakeBusinesses($business), new FakeCategories(), new FakeProducts(), null, null, new PublicPaymentMethods([$method])))->publicCatalog('shop');
         self::assertSame('5.00', $catalog['fulfillment_methods'][0]['fee']);
         self::assertSame([['id' => 3, 'name' => 'Efectivo']], $catalog['payment_methods']);
-    }
-
-    public function testQrContainsTheExactPublicCatalogUrl(): void
-    {
-        putenv('PUBLIC_CATALOG_BASE_URL=https://vendaly.test/public/catalog');
-        $svg = (new QrCodeService(new FakeBusinesses($this->business(true))))->image(1, 0);
-        $expected = (new \Endroid\QrCode\Builder\Builder(writer: new \Endroid\QrCode\Writer\SvgWriter(), data: 'https://vendaly.test/public/catalog/shop'))->build()->getString();
-        self::assertSame($expected, $svg);
     }
 
     private function business(bool $published): Business
