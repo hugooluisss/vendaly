@@ -57,6 +57,9 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "gateway": {
+              "baseHref": "/vendaly-app/"
             }
           },
           "defaultConfiguration": "production"
@@ -69,6 +72,9 @@
             },
             "development": {
               "buildTarget": "web:build:development"
+            },
+            "gateway": {
+              "buildTarget": "web:build:development,gateway"
             }
           },
           "defaultConfiguration": "development"

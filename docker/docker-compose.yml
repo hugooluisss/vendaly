@@ -27,6 +27,9 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
+    command: ["sh", "-c", "npm start -- --host 0.0.0.0 --proxy-config proxy.conf.json --disable-host-check $WEB_SERVE_FLAGS"]
+    environment:
+      WEB_SERVE_FLAGS: ${WEB_SERVE_FLAGS:-}
     ports: ["${WEB_PORT:-4200}:4200"]
     volumes: ["../apps/web:/app", "/app/node_modules"]
   postgres:
