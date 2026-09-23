@@ -6,14 +6,15 @@ import { ProductApiService, ProductInput } from '../product-api.service';
 import { Category, Product, ProductOption } from '../catalog.models';
 import { ModalComponent } from '../../shared/modal/modal.component';
 import { ImageUploadComponent } from '../../shared/image-upload/image-upload.component';
+import { NotificationService } from '../../shared/notification.service';
 
 export function hasInvalidPricedOptions(product: ProductInput): boolean { return product.price == null && (product.options ?? []).some(option => option.values.some(value => Number(value.price_delta) !== 0)); }
 
 @Component({ standalone: true, imports: [FormsModule, ModalComponent, ImageUploadComponent], templateUrl: './catalog-management.component.html', styleUrl: './catalog-management.component.css' })
 export class CatalogManagementComponent {
-  private readonly businessApi = inject(BusinessApiService); private readonly categoriesApi = inject(CategoryApiService); private readonly productsApi = inject(ProductApiService);
+  private readonly businessApi = inject(BusinessApiService); private readonly categoriesApi = inject(CategoryApiService); private readonly productsApi = inject(ProductApiService); readonly notification = inject(NotificationService);
   readonly coordinatesRequiredMessage = 'Agrega una ubicación en el mapa en Configuración del negocio antes de publicar.';
-  businessId = 0; published = false; hasCoordinates = false; publishError = ''; productError = ''; categories: Category[] = []; products: Product[] = []; newCategory = ''; editingCategory?: Category; editingProduct?: Product; image?: File; ingredientInput = '';
+  businessId = 0; published = false; hasCoordinates = false; productError = ''; categories: Category[] = []; products: Product[] = []; newCategory = ''; editingCategory?: Category; editingProduct?: Product; image?: File; ingredientInput = '';
   product: ProductInput = { category_id: 0, name: '', description: '', price: null, is_active: true, ingredients: [], options: [] };
   modal: 'categories' | 'product' | 'confirm' | undefined; pendingDelete?: { type: 'category' | 'product'; name: string; id: number };
 
@@ -32,13 +33,10 @@ export class CatalogManagementComponent {
   resetProduct(): void { this.editingProduct = undefined; this.image = undefined; this.ingredientInput = ''; this.productError = ''; this.product = { category_id: this.categories[0]?.id ?? 0, name: '', description: '', price: null, is_active: true, ingredients: [], options: [] }; this.modal = undefined; }
   closeModal(): void { this.modal = undefined; this.editingCategory = undefined; this.pendingDelete = undefined; }
   togglePublish(): void {
-    if (!this.published && !this.hasCoordinates) { this.publishError = this.coordinatesRequiredMessage; return; }
-    this.publishError = '';
+    if (!this.published && !this.hasCoordinates) { this.notification.error(this.coordinatesRequiredMessage); return; }
     this.businessApi.publish(this.businessId, !this.published).subscribe({
       next: () => this.published = !this.published,
-      error: error => {
-        if (error.error === 'Set a location on the map before publishing.') this.publishError = this.coordinatesRequiredMessage;
-      },
+      error: error => this.notification.error(error.error === 'Set a location on the map before publishing.' ? this.coordinatesRequiredMessage : error.error?.error ?? 'No se pudo actualizar la publicación del catálogo.'),
     });
   }
   onImageSelected(file: File): void { this.image = file; }

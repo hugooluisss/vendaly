@@ -3,11 +3,13 @@ import { of, throwError } from 'rxjs';
 import { BusinessApiService } from '../business-api.service';
 import { OrderApiService } from '../order-api.service';
 import { OrderHistoryComponent } from './order-history.component';
+import { NotificationService } from '../../shared/notification.service';
 
 describe('OrderHistoryComponent', () => {
   let fixture: ComponentFixture<OrderHistoryComponent>;
   let component: OrderHistoryComponent;
   let ordersApi: jasmine.SpyObj<OrderApiService>;
+  let notification: jasmine.SpyObj<NotificationService>;
 
   const order = {
     id: 7,
@@ -23,11 +25,13 @@ describe('OrderHistoryComponent', () => {
     ordersApi = jasmine.createSpyObj<OrderApiService>('OrderApiService', ['list', 'updateStatus']);
     ordersApi.list.and.returnValue(of({ orders: [{ ...order, status: { ...order.status }, items: [...order.items] }], count: 1 }));
     ordersApi.updateStatus.and.returnValue(of(void 0));
+    notification = jasmine.createSpyObj<NotificationService>('NotificationService', ['success', 'error']);
     await TestBed.configureTestingModule({
       imports: [OrderHistoryComponent],
       providers: [
         { provide: BusinessApiService, useValue: { getMine: () => of({ business: { id: 4 } }), orderStatuses: () => of([{ id: 1, name: 'Creado', color: '#EA580C' }, { id: 2, name: 'Entregado', color: '#16A34A' }]) } },
-        { provide: OrderApiService, useValue: ordersApi }
+        { provide: OrderApiService, useValue: ordersApi },
+        { provide: NotificationService, useValue: notification }
       ]
     }).compileComponents();
     fixture = TestBed.createComponent(OrderHistoryComponent);
@@ -66,7 +70,14 @@ describe('OrderHistoryComponent', () => {
     ordersApi.updateStatus.and.returnValue(throwError(() => new Error('failed')));
     component.changeStatus(component.orders[0], 2);
 
-    expect(component.error).toBe('No se pudo actualizar el estado del pedido.');
+    expect(notification.error).toHaveBeenCalledWith('No se pudo actualizar el estado del pedido.');
     expect(component.orders[0].status.name).toBe('Creado');
+  });
+
+  it('keeps order load failures as inline page state', () => {
+    ordersApi.list.and.returnValue(throwError(() => new Error('failed')));
+    component.load();
+    expect(component.error).toBe('No se pudieron cargar los pedidos.');
+    expect(notification.error).not.toHaveBeenCalled();
   });
 });

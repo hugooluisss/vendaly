@@ -5,6 +5,7 @@ import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { BusinessApiService } from './business-api.service';
 import { Business } from './business.models';
+import { NotificationService } from '../shared/notification.service';
 
 describe('business public catalog URL', () => {
   function load(business?: Business, baseHref = '/') {
@@ -37,5 +38,32 @@ describe('business fulfillment settings', () => {
     component.paymentMethods = [{ id: 1, name: 'Efectivo', position: 0 }]; component.businessId = 4;
     component.deletePaymentMethod(component.paymentMethods[0]);
     expect(component.paymentMethods.length).toBe(1);
+  });
+});
+
+describe('business profile save notifications', () => {
+  function setup(update: jasmine.Spy) {
+    const notification = jasmine.createSpyObj<NotificationService>('NotificationService', ['success', 'error']);
+    TestBed.configureTestingModule({ providers: [
+      { provide: BusinessApiService, useValue: { getMine: () => throwError(() => new Error('unused in this suite')), update } },
+      { provide: NotificationService, useValue: notification }
+    ] });
+    const component = TestBed.runInInjectionContext(() => new BusinessSettingsComponent());
+    component.businessId = 4;
+    component.profile.setValue({ name: 'Tienda', whatsapp_number: '', description: '', category: null, location: '' });
+    return { component, notification };
+  }
+
+  it('shows success after saving the profile', () => {
+    const { component, notification } = setup(jasmine.createSpy().and.returnValue(of({})));
+    component.saveProfile();
+    expect(notification.success).toHaveBeenCalledWith('Perfil guardado con éxito.');
+  });
+
+  it('shows the server reason or existing fallback when saving fails', () => {
+    const update = jasmine.createSpy().and.returnValue(throwError(() => ({ error: { error: 'Sin permiso.' } })));
+    const { component, notification } = setup(update);
+    component.saveProfile();
+    expect(notification.error).toHaveBeenCalledWith('Sin permiso.');
   });
 });

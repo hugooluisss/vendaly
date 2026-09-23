@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { BusinessApiService } from '../business-api.service';
 import { OrderApiService } from '../order-api.service';
 import { Order, OrderStatus } from '../order.models';
+import { NotificationService } from '../../shared/notification.service';
 
 type Range = 'today' | '7' | '30' | 'custom';
 
@@ -16,6 +17,7 @@ type Range = 'today' | '7' | '30' | 'custom';
 export class OrderHistoryComponent {
   private readonly businessApi = inject(BusinessApiService);
   private readonly ordersApi = inject(OrderApiService);
+  readonly notification = inject(NotificationService);
   businessId = 0; range: Range = 'today'; from = this.today(); to = this.from;
   orders: Order[] = []; count = 0; loading = false; error = '';
   statuses: OrderStatus[] = [];
@@ -30,13 +32,12 @@ export class OrderHistoryComponent {
   }
   changeStatus(order: Order, statusId: number): void {
     if (statusId === order.status.id) return;
-    this.error = '';
     this.ordersApi.updateStatus(this.businessId, order.id, statusId).subscribe({
       next: () => {
         const status = this.statuses.find(option => option.id === statusId);
         if (status) order.status = status;
       },
-      error: () => this.error = 'No se pudo actualizar el estado del pedido.'
+      error: () => this.notification.error('No se pudo actualizar el estado del pedido.')
     });
   }
   applyCustomRange(): void { this.load(); }
