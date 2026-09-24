@@ -2,6 +2,8 @@
 
 Vendaly is a SaaS for digital catalogs/menus shared via a public URL/QR code. Customers browse a business's catalog, build a selection, and send it to the business via a WhatsApp deep link (`wa.me`) — not the WhatsApp Business API. This is not e-commerce/POS: no payments, inventory, delivery, or invoicing in scope. A user is one business in the current model (`BusinessMember` exists for future multi-business/roles support but no multi-tenancy logic is implemented yet).
 
+The public catalog page is mobile-first (the primary entry point is a QR scan) but reflows into a two-column desktop layout at `≥960px` — a sticky sidebar (business info, category navigation, hours) alongside a multi-column product grid — instead of just widening the mobile column.
+
 ## Repository layout
 
 - `apps/web/` — Angular frontend
