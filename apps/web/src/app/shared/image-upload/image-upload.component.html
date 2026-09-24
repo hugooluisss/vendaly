@@ -1,4 +1,4 @@
-<label>{{ label }}<input type="file" accept="image/*" (change)="selectFile($event)"></label>
+<label class="btn btn-secondary">{{ label }}<input type="file" accept="image/*" (change)="selectFile($event)"></label>
 @if (previewUrl) { <img class="preview" [src]="previewUrl" [alt]="label + ' seleccionada'"> }
 @if (editorOpen) {
   <app-modal title="Ajustar imagen" (close)="cancel()">
@@ -14,8 +14,8 @@
     </image-cropper>
     @if (error) { <p class="error">{{ error }}</p> }
     <div class="actions">
-      <button type="button" class="button secondary" (click)="cancel()">Cancelar</button>
-      <button type="button" class="button" [disabled]="!croppedFile" (click)="confirm()">Usar imagen</button>
+      <button type="button" class="btn btn-secondary" (click)="cancel()">Cancelar</button>
+      <button type="button" class="btn btn-primary" [disabled]="!croppedFile" (click)="confirm()">Usar imagen</button>
     </div>
   </app-modal>
 }

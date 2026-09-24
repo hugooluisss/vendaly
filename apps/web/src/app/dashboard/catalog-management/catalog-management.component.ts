@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { BusinessApiService } from '../business-api.service';
 import { CategoryApiService } from '../category-api.service';
 import { ProductApiService, ProductInput } from '../product-api.service';
@@ -10,7 +11,7 @@ import { NotificationService } from '../../shared/notification.service';
 
 export function hasInvalidPricedOptions(product: ProductInput): boolean { return product.price == null && (product.options ?? []).some(option => option.values.some(value => Number(value.price_delta) !== 0)); }
 
-@Component({ standalone: true, imports: [FormsModule, ModalComponent, ImageUploadComponent], templateUrl: './catalog-management.component.html', styleUrl: './catalog-management.component.css' })
+@Component({ standalone: true, imports: [FormsModule, RouterLink, ModalComponent, ImageUploadComponent], templateUrl: './catalog-management.component.html', styleUrl: './catalog-management.component.css' })
 export class CatalogManagementComponent {
   private readonly businessApi = inject(BusinessApiService); private readonly categoriesApi = inject(CategoryApiService); private readonly productsApi = inject(ProductApiService); readonly notification = inject(NotificationService);
   readonly coordinatesRequiredMessage = 'Agrega una ubicación en el mapa en Configuración del negocio antes de publicar.';

@@ -1,13 +1,13 @@
-<aside class="sidebar">
+<aside class="sidebar bg-vendaly-slate text-white">
   <a class="brand" routerLink="/dashboard"><strong>Vendaly</strong></a>
   <nav aria-label="Navegación principal">
-    <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a>
-    <a routerLink="/dashboard/settings" routerLinkActive="active">Negocio</a>
-    <a routerLink="/dashboard/catalog" routerLinkActive="active">Catálogo</a>
-    <a routerLink="/dashboard/orders" routerLinkActive="active">Pedidos</a>
+    <a class="text-slate-200" routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Inicio</a>
+    <a class="text-slate-200" routerLink="/dashboard/settings" routerLinkActive="active">Negocio</a>
+    <a class="text-slate-200" routerLink="/dashboard/catalog" routerLinkActive="active">Catálogo</a>
+    <a class="text-slate-200" routerLink="/dashboard/orders" routerLinkActive="active">Pedidos</a>
   </nav>
 </aside>
 <div class="workspace">
-  <header class="topbar"><span>{{ businessName }}</span><button type="button" (click)="logout()">Cerrar sesión</button></header>
+  <header class="topbar bg-vendaly-surface"><span>{{ businessName }}</span><button class="btn btn-secondary" type="button" (click)="logout()">Cerrar sesión</button></header>
   <main><router-outlet /></main>
 </div>

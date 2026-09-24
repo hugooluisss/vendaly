@@ -1,18 +1,18 @@
 @if (!business) {
   <section class="card hero">
-    <p class="eyebrow">PANEL DE ADMINISTRACIÓN</p>
+    <p class="eyebrow text-vendaly-orange">PANEL DE ADMINISTRACIÓN</p>
     <h1>Tu negocio</h1>
     <p>Configura tu negocio y después arma tu catálogo.</p>
-    <a class="button" routerLink="/dashboard/onboarding">Crear o configurar negocio</a>
+    <a class="btn btn-primary" routerLink="/dashboard/onboarding">Crear o configurar negocio</a>
   </section>
 } @else {
   <header class="card business-header" aria-label="Estado del negocio">
     <div>
-      <p class="eyebrow">PANEL DE ADMINISTRACIÓN</p>
+      <p class="eyebrow text-vendaly-orange">PANEL DE ADMINISTRACIÓN</p>
       <h1>{{ business.name }}</h1>
       <p>Aquí tienes un resumen de tu negocio y catálogo.</p>
       @if (publicCatalogUrl) {
-        <a class="catalog-url" [href]="publicCatalogUrl" target="_blank" rel="noopener noreferrer">{{ publicCatalogUrl }}</a>
+        <a class="catalog-url text-vendaly-orange" [href]="publicCatalogUrl" target="_blank" rel="noopener noreferrer">{{ publicCatalogUrl }}</a>
       }
     </div>
     <span class="status" [class.published]="business.is_published">{{ business.is_published ? 'Publicado' : 'Sin publicar' }}</span>
@@ -20,17 +20,17 @@
 
   <section class="card qr-panel" aria-labelledby="qr-title">
     <div class="qr-copy">
-      <p class="eyebrow">CATÁLOGO PÚBLICO</p>
+      <p class="eyebrow text-vendaly-orange">CATÁLOGO PÚBLICO</p>
       <h2 id="qr-title">Comparte tu catálogo</h2>
       @if (publicCatalogUrl) {
         <p>Escanea el código para abrir tu catálogo público.</p>
         <div class="actions">
-          <button type="button" class="button" [disabled]="!qrCode?.qrReady" (click)="downloadQr()">Descargar QR</button>
-          <a class="text-link" routerLink="/dashboard/catalog">Editar catálogo</a>
+          <button type="button" class="btn btn-primary" [disabled]="!qrCode?.qrReady" (click)="downloadQr()">Descargar QR</button>
+          <a class="text-link text-vendaly-orange" routerLink="/dashboard/catalog">Editar catálogo</a>
         </div>
       } @else {
         <p class="empty-copy">Tu catálogo todavía no está publicado. Publícalo para compartir su código QR.</p>
-        <a class="text-link" routerLink="/dashboard/settings">Configurar negocio</a>
+        <a class="text-link text-vendaly-orange" routerLink="/dashboard/settings">Configurar negocio</a>
       }
     </div>
     @if (publicCatalogUrl) {
@@ -53,9 +53,9 @@
     @if (hasScans) {
       <div class="chart" role="img" aria-label="Escaneos por día">
         @for (day of scanByDay; track day.date) {
-          <div class="chart-day">
+          <div class="chart-day text-vendaly-muted">
             <strong>{{ day.count }}</strong>
-            <div class="chart-track"><div class="chart-bar" [style.height.%]="scanBarHeight(day.count)"></div></div>
+            <div class="chart-track"><div class="chart-bar bg-vendaly-orange" [style.height.%]="scanBarHeight(day.count)"></div></div>
             <span>{{ day.date }}</span>
           </div>
         }

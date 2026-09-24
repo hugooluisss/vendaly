@@ -1,6 +1,6 @@
 import { Component, ViewChild, inject } from '@angular/core';
 import { Location } from '@angular/common';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { BusinessApiService } from '../business-api.service';
 import { ModalComponent } from '../../shared/modal/modal.component';
@@ -16,7 +16,7 @@ const DEFAULT_POSITION: MapPosition = { lat: 19.4326, lng: -99.1332 };
 type FulfillmentSettings = { pickup_enabled: boolean; delivery_enabled: boolean; dine_in_enabled: boolean; pickup_fee?: number | null; delivery_fee?: number | null; dine_in_fee?: number | null };
 export function unconfiguredDays(hours: { day_of_week: number }[]): number[] { const configured = new Set(hours.map(hour => hour.day_of_week)); return DAYS.map((_, day) => day).filter(day => !configured.has(day)); }
 
-@Component({ standalone: true, imports: [FormsModule, ReactiveFormsModule, ModalComponent, ImageUploadComponent, MapComponent, QrCodeComponent], styleUrl: './business-settings.component.css', templateUrl: './business-settings.component.html' })
+@Component({ standalone: true, imports: [FormsModule, ReactiveFormsModule, RouterLink, ModalComponent, ImageUploadComponent, MapComponent, QrCodeComponent], styleUrl: './business-settings.component.css', templateUrl: './business-settings.component.html' })
 export class BusinessSettingsComponent {
   private readonly api = inject(BusinessApiService); private readonly location = inject(Location); private readonly router = inject(Router); readonly notification = inject(NotificationService); @ViewChild(QrCodeComponent) qrCode?: QrCodeComponent; businessId = 0; publicCatalogUrl?: string; logo?: File; coverImage?: File; coverImageUrl?: string | null; mapCenter = DEFAULT_POSITION; position?: MapPosition; hoursModal = false; fulfillment: FulfillmentSettings = { pickup_enabled: true, delivery_enabled: false, dine_in_enabled: false, pickup_fee: null, delivery_fee: null, dine_in_fee: null }; paymentMethods: PaymentMethod[] = []; paymentMethodInput = ''; orderStatuses: OrderStatus[] = []; orderStatusInput = ''; orderStatusColor = '#EA580C'; orderStatusTerminal = false; hours = Array.from({ length: 7 }, (_, day) => ({ day_of_week: day, opens_at: '09:00', closes_at: '18:00', is_closed: false })); readonly dayNames = DAYS; readonly categories = BUSINESS_CATEGORIES;
   readonly profile = new FormGroup({ name: new FormControl('', { nonNullable: true, validators: [Validators.required] }), whatsapp_number: new FormControl('', { nonNullable: true }), description: new FormControl('', { nonNullable: true }), category: new FormControl<string | null>(null), location: new FormControl('', { nonNullable: true }) });

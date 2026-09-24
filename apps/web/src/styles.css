@@ -1,22 +1,67 @@
-:root {
-  --vendaly-orange: #ea580c;
-  --vendaly-orange-light: #f97316;
-  --vendaly-orange-soft: #fff7ed;
-  --vendaly-slate: #1e293b;
-  --vendaly-muted: #64748b;
-  --vendaly-border: #e7e5e4;
-  --vendaly-border-strong: #cbd5e1;
-  --vendaly-danger: #b42318;
-  --vendaly-shadow: #1e293b33;
-  --vendaly-shadow-soft: #1e293b0d;
-  --vendaly-surface: #ffffff;
-  --vendaly-bg: #fafaf9;
-  --vendaly-background: #fafaf9;
-  --whatsapp-green: #25d366;
-  --whatsapp-green-hover: #1fbd5b;
-  --whatsapp-text: #052e16;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--vendaly-background); color: var(--vendaly-slate); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { @apply m-0 bg-vendaly-background text-vendaly-slate; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+
+@layer components {
+  .btn {
+    @apply inline-block rounded-[.65rem] border-0 bg-vendaly-orange px-4 py-[.7rem] font-bold text-white no-underline cursor-pointer;
+  }
+
+  .btn:hover:not(:disabled) {
+    @apply bg-vendaly-orange-light;
+  }
+
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-60;
+  }
+
+  .btn-primary {
+    @apply bg-vendaly-orange text-white;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    @apply bg-vendaly-orange-light;
+  }
+
+  .btn-secondary {
+    @apply bg-vendaly-slate text-white;
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    @apply bg-vendaly-muted;
+  }
+
+  .field-input,
+  .field-select {
+    @apply block w-full rounded-[.6rem] border border-vendaly-border-strong px-[.7rem] py-[.65rem] text-vendaly-slate;
+    min-height: 2.75rem;
+  }
+
+  .field-input:focus,
+  .field-select:focus {
+    @apply border-vendaly-orange outline-none ring-2 ring-vendaly-orange;
+  }
+
+  textarea.field-input {
+    @apply min-h-24;
+  }
+
+  .field-checkbox {
+    @apply form-checkbox h-4 w-4 rounded border-vendaly-border-strong text-vendaly-orange focus:ring-vendaly-orange;
+  }
+
+  .field-radio {
+    @apply form-radio h-4 w-4 border-vendaly-border-strong text-vendaly-orange focus:ring-vendaly-orange;
+  }
+
+  .card {
+    @apply rounded-2xl border border-vendaly-border bg-vendaly-surface shadow;
+    padding: clamp(1.25rem, 4vw, 2rem);
+    box-shadow: 0 3px 12px theme('colors.vendaly.shadow-soft');
+  }
+}

@@ -1,13 +1,13 @@
 import { AsyncPipe, CurrencyPipe } from '@angular/common';
 import { Component, inject } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, of, shareReplay } from 'rxjs';
 import { ModalComponent } from '../../shared/modal/modal.component';
 import { CartService } from '../cart.service';
 import { CatalogApiService } from '../catalog-api.service';
 import { PublicProduct } from '../public.models';
 
-@Component({ standalone: true, imports: [AsyncPipe, CurrencyPipe, ModalComponent], templateUrl: './catalog-page.component.html', styleUrl: '../public.css' })
+@Component({ standalone: true, imports: [AsyncPipe, CurrencyPipe, RouterLink, ModalComponent], templateUrl: './catalog-page.component.html', styleUrl: '../public.css' })
 export class CatalogPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
