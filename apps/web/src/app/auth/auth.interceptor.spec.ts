@@ -52,4 +52,26 @@ describe('authInterceptor', () => {
     expect(retry.request.headers.get('Authorization')).toBe('Bearer new');
     retry.flush({ ok: true });
   });
+
+  it('shares one refresh request across concurrent 401 responses', () => {
+    const responses: unknown[] = [];
+    http.get('http://localhost:8080/categories').subscribe(response => responses.push(response));
+    http.get('http://localhost:8080/products').subscribe(response => responses.push(response));
+
+    requests.expectOne('http://localhost:8080/categories').flush({}, { status: 401, statusText: 'Unauthorized' });
+    requests.expectOne('http://localhost:8080/products').flush({}, { status: 401, statusText: 'Unauthorized' });
+
+    const refresh = requests.expectOne('http://localhost:8080/auth/refresh');
+    expect(refresh.request.body).toEqual({ refresh_token: 'refresh' });
+    refresh.flush({ access_token: 'new', refresh_token: 'rotated' });
+
+    const categoryRetry = requests.expectOne('http://localhost:8080/categories');
+    const productRetry = requests.expectOne('http://localhost:8080/products');
+    expect(categoryRetry.request.headers.get('Authorization')).toBe('Bearer new');
+    expect(productRetry.request.headers.get('Authorization')).toBe('Bearer new');
+    categoryRetry.flush({ items: ['category'] });
+    productRetry.flush({ items: ['product'] });
+
+    expect(responses).toEqual([{ items: ['category'] }, { items: ['product'] }]);
+  });
 });

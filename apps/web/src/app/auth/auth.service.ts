@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, map, tap } from 'rxjs';
+import { Observable, finalize, map, shareReplay, tap } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthResponse, AuthTokens, readTokens } from './auth.models';
 
@@ -11,6 +11,7 @@ export class AuthService {
   private readonly router = inject(Router);
   private readonly storageKey = 'vendaly.auth.tokens';
   private readonly apiUrl = environment.apiBaseUrl;
+  private refreshRequest: Observable<AuthTokens> | null = null;
 
   register(email: string, password: string): Observable<AuthTokens> {
     return this.http.post<AuthResponse>(`${this.apiUrl}/auth/register`, { email, password }).pipe(
@@ -27,15 +28,28 @@ export class AuthService {
   }
 
   refresh(): Observable<AuthTokens> {
+    if (this.refreshRequest) {
+      return this.refreshRequest;
+    }
+
     const refreshToken = this.getTokens()?.refreshToken;
     if (!refreshToken) {
       throw new Error('No hay refresh token');
     }
 
-    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/refresh`, { refresh_token: refreshToken }).pipe(
+    const refreshRequest = this.http.post<AuthResponse>(`${this.apiUrl}/auth/refresh`, { refresh_token: refreshToken }).pipe(
       map(readTokens),
-      tap(tokens => this.saveTokens(tokens))
+      tap(tokens => this.saveTokens(tokens)),
+      finalize(() => {
+        if (this.refreshRequest === refreshRequest) {
+          this.refreshRequest = null;
+        }
+      }),
+      shareReplay({ bufferSize: 1, refCount: false })
     );
+
+    this.refreshRequest = refreshRequest;
+    return refreshRequest;
   }
 
   getAccessToken(): string | null {
