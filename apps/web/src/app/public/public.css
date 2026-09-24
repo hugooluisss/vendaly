@@ -22,3 +22,10 @@ button { border: 0; border-radius: 999px; padding: .65rem 1rem; font: inherit; f
   .catalog-shell:not(.directory):has(> .catalog-sidebar) .product-card { align-items: flex-start; }
 }
 @media (min-width: 960px) { .catalog-shell.directory { max-width: 1200px; }.directory-section-list { grid-template-columns: repeat(3, 1fr); } }
+
+.business-contacts { position: absolute; z-index: 1; top: 1rem; right: 1rem; display: flex; max-width: calc(100% - 5rem); gap: .4rem; }
+.contact-icon { display: grid; width: 2.25rem; height: 2.25rem; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #1e293bcc; color: white; text-decoration: none; }
+.contact-icon svg { width: 1.15rem; height: 1.15rem; }
+.contact-icon:hover, .contact-icon:focus-visible { background: theme('colors.vendaly.orange'); outline: 2px solid white; outline-offset: 2px; }
+@media (min-width: 620px) { .business-contacts { top: 1rem; right: 1.5rem; } }
+@media (min-width: 960px) { .business-contacts { top: 1.25rem; right: 1.25rem; } }

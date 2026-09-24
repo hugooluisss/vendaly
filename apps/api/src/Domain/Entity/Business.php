@@ -24,6 +24,12 @@ class Business
     public ?string $coverImageUrl = null;
     #[Column('string', nullable: true, name: 'whatsapp_number')]
     public ?string $whatsappNumber = null;
+    #[Column('string', nullable: true, name: 'facebook_url')]
+    public ?string $facebookUrl = null;
+    #[Column('string', nullable: true, name: 'instagram_url')]
+    public ?string $instagramUrl = null;
+    #[Column('string', nullable: true, name: 'website_url')]
+    public ?string $websiteUrl = null;
     #[Column('text', nullable: true)]
     public ?string $description = null;
     #[Column('text', nullable: true)]

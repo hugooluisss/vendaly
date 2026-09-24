@@ -26,6 +26,7 @@ export class CatalogPageComponent {
   }
 
   selectCategory(categoryId: number): void { this.activeCategory = categoryId; }
+  whatsappLink(number: string): string { return 'https://wa.me/' + number.replace(/\D+/g, ''); }
   openOrder(): void { this.router.navigate(['/public/catalog', this.slug, 'order']); }
   addProduct(product: PublicProduct): void { if (product.options?.length) { this.pendingProduct = product; this.selections.set(product.id, []); } else this.cart.add(product); }
   confirmAdd(): void { if (this.pendingProduct && this.canAdd(this.pendingProduct)) { this.cart.add(this.pendingProduct, this.selected(this.pendingProduct)); this.closeModal(); } }

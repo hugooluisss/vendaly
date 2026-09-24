@@ -16,7 +16,7 @@ export interface PublicFulfillmentMethod { type: 'pickup' | 'delivery' | 'dine_i
 export interface PublicPaymentMethod { id: number; name: string; position?: number; }
 export interface BusinessHours { dayOfWeek: number; opensAt?: string | null; closesAt?: string | null; isClosed: boolean; }
 export interface PublicCatalog {
-  business: { name: string; description?: string | null; logoUrl?: string | null; cover_image_url?: string | null };
+  business: { name: string; description?: string | null; logoUrl?: string | null; cover_image_url?: string | null; whatsapp_number?: string | null; facebook_url?: string | null; instagram_url?: string | null; website_url?: string | null };
   hours: BusinessHours[];
   fulfillment_methods: PublicFulfillmentMethod[];
   payment_methods: PublicPaymentMethod[];

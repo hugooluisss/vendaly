@@ -7,6 +7,9 @@ export interface Business {
   latitude?: number | null;
   longitude?: number | null;
   whatsapp_number?: string | null;
+  facebook_url?: string | null;
+  instagram_url?: string | null;
+  website_url?: string | null;
   description?: string | null;
   category?: string | null;
   location?: string | null;

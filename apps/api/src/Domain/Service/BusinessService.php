@@ -90,6 +90,15 @@ final readonly class BusinessService
             }
             $business->whatsappNumber = $number === '' ? null : $number;
         }
+        foreach (['facebook_url' => 'facebookUrl', 'instagram_url' => 'instagramUrl', 'website_url' => 'websiteUrl'] as $field => $property) {
+            if (array_key_exists($field, $input)) {
+                $url = trim((string) $input[$field]);
+                if ($url !== '' && filter_var($url, FILTER_VALIDATE_URL) === false) {
+                    throw new DomainException('Invalid ' . $field . '.');
+                }
+                $business->{$property} = $url === '' ? null : $url;
+            }
+        }
         if (array_key_exists('description', $input)) {
             $business->description = $input['description'] === null ? null : trim((string) $input['description']);
         }

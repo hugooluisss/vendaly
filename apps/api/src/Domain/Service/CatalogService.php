@@ -60,6 +60,10 @@ final readonly class CatalogService
                 'logo_url' => $business->logoUrl,
                 'cover_image_url' => $business->coverImageUrl,
                 'description' => $business->description,
+                'whatsapp_number' => $business->whatsappNumber,
+                'facebook_url' => $business->facebookUrl,
+                'instagram_url' => $business->instagramUrl,
+                'website_url' => $business->websiteUrl,
             ],
             'fulfillment_methods' => array_values(array_filter([
                 $business->pickupEnabled ? ['type' => 'pickup', 'fee' => $business->pickupFee] : null,

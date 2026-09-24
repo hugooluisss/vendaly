@@ -147,6 +147,31 @@ final class BusinessAndCatalogManagementTest extends TestCase
         $service->updateProfile(7, 1, ['category' => 'invalid']);
     }
 
+    public function testSocialUrlsCanBeSetClearedAndRejectMalformedValues(): void
+    {
+        $repo = new ManagementBusinesses();
+        $business = $this->business(1);
+        $repo->businesses[] = $business;
+        $repo->members[] = $this->member(1, 7);
+        $service = new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage());
+        $service->updateProfile(7, 1, ['facebook_url' => ' https://facebook.com/shop ', 'instagram_url' => 'https://instagram.com/shop', 'website_url' => 'https://shop.example']);
+        self::assertSame('https://facebook.com/shop', $business->facebookUrl);
+        self::assertSame('https://instagram.com/shop', $business->instagramUrl);
+        self::assertSame('https://shop.example', $business->websiteUrl);
+        $service->updateProfile(7, 1, ['facebook_url' => '', 'instagram_url' => null, 'website_url' => '   ']);
+        self::assertNull($business->facebookUrl);
+        self::assertNull($business->instagramUrl);
+        self::assertNull($business->websiteUrl);
+        foreach (['facebook_url', 'instagram_url', 'website_url'] as $field) {
+            try {
+                $service->updateProfile(7, 1, [$field => 'invalid URL']);
+                self::fail('Expected invalid URL rejection for ' . $field);
+            } catch (DomainException $exception) {
+                self::assertSame('Invalid ' . $field . '.', $exception->getMessage());
+            }
+        }
+    }
+
     public function testProfileCoordinatesAreOptionalValidatedAndStored(): void
     {
         $repo = new ManagementBusinesses();

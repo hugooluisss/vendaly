@@ -108,6 +108,23 @@ final class PublicCatalogAndOrdersTest extends TestCase
         self::assertSame($b->coverImageUrl, $result['business']['cover_image_url']);
     }
 
+    public function testPublicCatalogIncludesContactFieldsAndNulls(): void
+    {
+        $business = $this->business(true);
+        $business->facebookUrl = 'https://facebook.com/shop';
+        $business->instagramUrl = 'https://instagram.com/shop';
+        $business->websiteUrl = 'https://shop.example';
+        $result = (new CatalogService(new FakeBusinesses($business), new FakeCategories(), new FakeProducts()))->publicCatalog('shop');
+        self::assertSame('+525512345678', $result['business']['whatsapp_number']);
+        self::assertSame('https://facebook.com/shop', $result['business']['facebook_url']);
+        self::assertSame('https://instagram.com/shop', $result['business']['instagram_url']);
+        self::assertSame('https://shop.example', $result['business']['website_url']);
+
+        $unset = (new CatalogService(new FakeBusinesses($this->business(true)), new FakeCategories(), new FakeProducts()))->publicCatalog('shop');
+        foreach (['facebook_url', 'instagram_url', 'website_url'] as $field) self::assertNull($unset['business'][$field]);
+        self::assertSame('+525512345678', $unset['business']['whatsapp_number']);
+    }
+
     public function testPublicCatalogIncludesEmptyAndConfiguredOptions(): void
     {
         $category = new Category();
