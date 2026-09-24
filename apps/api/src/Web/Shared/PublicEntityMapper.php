@@ -18,6 +18,8 @@ final class PublicEntityMapper
             'cover_image_url' => $business->coverImageUrl,
             'whatsapp_number' => $business->whatsappNumber,
             'description' => $business->description,
+            'category' => $business->category,
+            'location' => $business->location,
             'is_published' => $business->isPublished,
             'latitude' => $business->latitude,
             'longitude' => $business->longitude,
