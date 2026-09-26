@@ -15,7 +15,7 @@ final class CycleOrderRepository extends CycleRepository implements OrderReposit
         return $this->createWithItems($entity, []);
     }
 
-    public function createWithItems(Order $entity, array $items, array $options = [], ?string $phone = null): Order
+    public function createWithItems(Order $entity, array $items, array $options = [], ?string $phone = null, string $walletCredit = '0.00', string $walletRedemption = '0.00'): Order
     {
         $driver = $this->orm->getSource(Order::class)->getDatabase()->getDriver();
         $database = $this->orm->getSource(Order::class)->getDatabase();
@@ -24,11 +24,15 @@ final class CycleOrderRepository extends CycleRepository implements OrderReposit
             if ($phone !== null) {
                 $entity->customerId = (new CycleCustomerRepository($this->orm))->findOrCreateByPhone($entity->businessId, $phone)->id;
             }
+            if ((float) $walletRedemption > 0 && $entity->customerId !== null) {
+                $balance = (float) $database->query('SELECT COALESCE(SUM(amount), 0) FROM wallet_transactions WHERE customer_id = ?', [$entity->customerId])->fetchColumn();
+                if ((float) $walletRedemption > $balance) {
+                    throw new \DomainException('Wallet redemption exceeds the available balance or order total.');
+                }
+            }
             if ($entity->orderNumber === null) {
-                $row = $database->query(
-                    'UPDATE businesses SET next_order_number = next_order_number + 1 WHERE id = ? RETURNING next_order_number - 1 AS order_number',
-                    [$entity->businessId],
-                )->fetch();
+                $database->execute('UPDATE businesses SET next_order_number = next_order_number + 1 WHERE id = ?', [$entity->businessId]);
+                $row = $database->query('SELECT next_order_number - 1 AS order_number FROM businesses WHERE id = ?', [$entity->businessId])->fetch();
                 if ($row === false) {
                     throw new \DomainException('Business not found.');
                 }
@@ -43,8 +47,9 @@ final class CycleOrderRepository extends CycleRepository implements OrderReposit
                     foreach (OrderStatus::defaults() as $defaultData) {
                         $terminal = $defaultData['is_terminal'] ? 'TRUE' : 'FALSE';
                         $default = $defaultData['is_default'] ? 'TRUE' : 'FALSE';
+                        $reversesWallet = ($defaultData['reverses_wallet'] ?? false) ? 'TRUE' : 'FALSE';
                         $database->execute(
-                            "INSERT INTO order_statuses (business_id, name, color, is_terminal, is_default, position) VALUES (?, ?, ?, {$terminal}, {$default}, ?)",
+                            "INSERT INTO order_statuses (business_id, name, color, is_terminal, is_default, reverses_wallet, position) VALUES (?, ?, ?, {$terminal}, {$default}, {$reversesWallet}, ?)",
                             [$entity->businessId, $defaultData['name'], $defaultData['color'], $defaultData['position']],
                         );
                     }
@@ -64,6 +69,12 @@ final class CycleOrderRepository extends CycleRepository implements OrderReposit
                 }
             }
             $manager->run(true, \Cycle\ORM\Transaction\Runner::outerTransaction());
+            if ($entity->customerId !== null && (float) $walletCredit > 0) {
+                $database->execute("INSERT INTO wallet_transactions (customer_id, order_id, type, amount) VALUES (?, ?, 'credit', ?)", [$entity->customerId, $entity->id, number_format((float) $walletCredit, 2, '.', '')]);
+            }
+            if ($entity->customerId !== null && (float) $walletRedemption > 0) {
+                $database->execute("INSERT INTO wallet_transactions (customer_id, order_id, type, amount) VALUES (?, ?, 'debit', ?)", [$entity->customerId, $entity->id, number_format(-abs((float) $walletRedemption), 2, '.', '')]);
+            }
             $driver->commitTransaction();
         } catch (\Throwable $e) {
             $driver->rollbackTransaction();
@@ -97,14 +108,21 @@ final class CycleOrderRepository extends CycleRepository implements OrderReposit
         if ($orders === []) {
             return [];
         }
+        $orderIds = array_map(static fn(Order $order): int => (int) $order->id, $orders);
         $items = $this->orm->getRepository(OrderItem::class)->select()
-            ->where(['orderId' => ['IN' => array_map(static fn(Order $order): int => (int) $order->id, $orders)]])
+            ->where(['orderId' => ['IN' => $orderIds]])
             ->fetchAll();
+        $walletRows = $this->orm->getSource(Order::class)->getDatabase()->query(
+            "SELECT order_id, type, SUM(amount) AS amount FROM wallet_transactions WHERE order_id IN (" . implode(',', array_fill(0, count($orderIds), '?')) . ") AND type IN ('credit', 'debit') GROUP BY order_id, type",
+            $orderIds,
+        )->fetchAll();
+        $walletByOrder = [];
+        foreach ($walletRows as $walletRow) $walletByOrder[(int) $walletRow['order_id']][$walletRow['type']] = number_format(abs((float) $walletRow['amount']), 2, '.', '');
         $itemsByOrder = [];
         foreach ($items as $item) {
             $itemsByOrder[$item->orderId][] = $item;
         }
-        return array_map(static fn(Order $order): array => ['order' => $order, 'items' => $itemsByOrder[$order->id] ?? []], $orders);
+        return array_map(static fn(Order $order): array => ['order' => $order, 'items' => $itemsByOrder[$order->id] ?? [], 'wallet_credited' => $walletByOrder[$order->id]['credit'] ?? null, 'wallet_redeemed' => $walletByOrder[$order->id]['debit'] ?? null], $orders);
     }
 
     public function findItems(int $orderId): array

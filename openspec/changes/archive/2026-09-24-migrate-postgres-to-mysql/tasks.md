@@ -1,0 +1,36 @@
+# Tasks
+
+## 1. Driver and connection config
+
+- [x] 1.1 In `apps/api/src/Infrastructure/Cycle/CycleOrm.php`, replace `PostgresDriverConfig`/`Postgres\DsnConnectionConfig` with `Cycle\Database\Config\MySQLDriverConfig`/`Cycle\Database\Config\MySQL\DsnConnectionConfig`, reading `getenv('DATABASE_URL')`, `getenv('DB_USER')`, `getenv('DB_PASSWORD')` (renamed from `POSTGRES_USER`/`POSTGRES_PASSWORD`), and verify with `docker exec vendaly-api-1 php -r "require '/app/vendor/autoload.php'; App\Infrastructure\Cycle\CycleOrm::create();"` (or equivalent smoke check) that it connects without error once the docker-compose changes in section 4 are also in place
+
+## 2. Migration rewrites — foreign keys and mechanical syntax
+
+- [x] 2.1 Audit all 16 files in `apps/api/migrations/` for inline column-level `REFERENCES` clauses (confirmed present in: `20260916.000000_01_initial.php`, `20260916.000002_03_refresh_tokens.php`, `20260916.000004_05_product_ingredients.php`, `20260921.000000_09_product_options.php`, `20260921.000002_11_order_fulfillment_fees_payment_methods.php`, `20260922.000000_12_order_status.php`, `20260922.000002_14_customers.php`, `20260923.000001_15_catalog_scans.php`) and convert every one to an explicit `FOREIGN KEY (col) REFERENCES table(col) ON DELETE ...` clause (in `CREATE TABLE`) or a separate `ALTER TABLE ... ADD CONSTRAINT ... FOREIGN KEY (col) REFERENCES table(col) ON DELETE ...` statement (for `ALTER TABLE ... ADD COLUMN` cases), preserving the exact same `ON DELETE CASCADE`/`SET NULL`/`RESTRICT` behavior as today
+- [x] 2.2 In the same pass, replace `BIGSERIAL` with `BIGINT AUTO_INCREMENT` (as the table's `PRIMARY KEY` column), and `TIMESTAMPTZ`/`TIMESTAMP ... DEFAULT now()` with `TIMESTAMP ... DEFAULT CURRENT_TIMESTAMP`, across all affected files
+- [x] 2.3 Add `CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci` to `CREATE TABLE` statements for tables with a `location` or `name` column searched via `LIKE` later (at minimum `businesses`), so the `ILIKE`→`LIKE` swap in task 3.1 behaves case-insensitively
+- [x] 2.4 In `20260922.000000_12_order_status.php`: rewrite `UPDATE orders o SET order_number = x.rn FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY created_at, id) AS rn FROM orders) x WHERE o.id = x.id AND o.order_number IS NULL` to `UPDATE orders o JOIN (SELECT id, ROW_NUMBER() OVER (PARTITION BY business_id ORDER BY created_at, id) AS rn FROM orders) x ON o.id = x.id SET o.order_number = x.rn WHERE o.order_number IS NULL`, and similarly rewrite `UPDATE orders o SET status_id = s.id FROM order_statuses s WHERE s.business_id = o.business_id AND s.is_default AND o.status_id IS NULL` to a `JOIN` form
+- [x] 2.5 In the same file, rewrite `ALTER TABLE orders ALTER COLUMN order_number SET NOT NULL` to `ALTER TABLE orders MODIFY COLUMN order_number INTEGER NOT NULL`, and `ALTER COLUMN status_id SET NOT NULL` to `MODIFY COLUMN status_id BIGINT NOT NULL`
+- [x] 2.6 Review the 6 files not flagged above (`20260916.000005_06_business_directory.php`, `20260916.000006_07_business_geolocation.php`, `20260916.000007_08_business_cover_image.php`, `20260921.000001_10_order_fulfillment.php`, `20260922.000001_13_order_status_seed_repair.php`, `20260924.000000_16_business_social_links.php`) to confirm they contain no other Postgres-specific syntax beyond what's already portable, and adjust if anything is found
+- [x] 2.7 Run `docker exec vendaly-api-1 php bin/migrate.php` against the empty `dev_vendaly` database end-to-end and verify it completes with no errors
+
+## 3. Repository rewrites
+
+- [x] 3.1 In `CycleBusinessRepository.php`, replace `->where('location', 'ILIKE', ...)` and `->where('name', 'ILIKE', ...)` with `'LIKE'`, and manually verify a mixed-case search (e.g. searching `"CAFE"` matches a business named `"Café Luna"`) still matches under the new collation from task 2.3
+- [x] 3.2 In the same file, re-verify the haversine distance calculation (`RADIANS`/`SIN`/`COS`/`ASIN`/`SQRT`/`POWER`) executes correctly against MySQL with no query changes needed, and spot-check a known distance calculation's result matches what it produced under Postgres
+- [x] 3.3 In `CycleCustomerRepository.php`, rewrite the `INSERT ... ON CONFLICT (business_id, phone) DO UPDATE SET id = customers.id RETURNING id` to `INSERT INTO customers (...) VALUES (?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)` followed by fetching `LAST_INSERT_ID()`, and verify the existing "customer resolution is scoped and atomic" behavior (same customer row reused for repeat orders from the same phone/business) still holds
+- [x] 3.4 In `CycleOrderRepository.php`, rewrite the `UPDATE businesses SET next_order_number = next_order_number + 1 WHERE id = ? RETURNING next_order_number - 1 AS order_number` to a plain `UPDATE` followed by a `SELECT next_order_number FROM businesses WHERE id = ?` within the same existing transaction, and verify sequential order numbers are still assigned correctly for a business (no duplicates, no gaps) including under back-to-back order creation
+- [x] 3.5 In `CycleCatalogScanRepository.php`, replace `to_char(date_trunc('day', created_at), 'YYYY-MM-DD')` with `DATE_FORMAT(created_at, '%Y-%m-%d')` consistently in the `SELECT`, `GROUP BY`, and `ORDER BY` clauses of the scan-stats query, and verify per-day scan counts still group correctly
+
+## 4. Docker and environment wiring
+
+- [x] 4.1 Remove the `postgres` service and the `postgres_data` volume from `docker/docker-compose.yml`, and remove `depends_on: postgres` from the `api` service
+- [x] 4.2 Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the `api` service in `docker/docker-compose.yml`
+- [x] 4.3 Change the `api` service's `DATABASE_URL`/`POSTGRES_USER`/`POSTGRES_PASSWORD` environment entries to `DATABASE_URL: ${DATABASE_URL}` / `DB_USER: ${DB_USER}` / `DB_PASSWORD: ${DB_PASSWORD}` (no hardcoded values, no fallback for the password — `docker/.env` already supplies these, following the existing `WEB_SERVE_FLAGS` pattern), and verify `docker compose -f docker/docker-compose.yml config` renders the expected values from `docker/.env`
+- [x] 4.4 Recreate the `api` container (`docker compose -f docker/docker-compose.yml up -d --force-recreate api`) and verify it starts successfully and can reach the host's MySQL server
+
+## 5. Verification
+
+- [x] 5.1 Verify referential integrity was actually created (not just that migrations ran without error) by running `SHOW CREATE TABLE categories;` and `SHOW CREATE TABLE business_members;` inside the database and confirming a `CONSTRAINT ... FOREIGN KEY` clause with the expected `ON DELETE` behavior appears for each
+- [x] 5.2 Run the full suite with `docker exec vendaly-api-1 vendor/bin/codecept run Unit` and confirm all tests pass with unchanged assertions (only test *setup*, never assertions, may need adjustment — flag anything that needed an assertion change as a possible regression rather than silently accepting it)
+- [x] 5.3 Manually exercise the app end-to-end against MySQL: create a business, add a category/product, publish the catalog, place an order (verifying sequential order numbers and repeat-customer resolution), and confirm the business directory's search and distance sorting work as before

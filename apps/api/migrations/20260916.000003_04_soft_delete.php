@@ -8,8 +8,8 @@ final class SoftDeleteCatalogEntities extends Migration
 {
     public function up(): void
     {
-        $this->database()->execute('ALTER TABLE categories ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL');
-        $this->database()->execute('ALTER TABLE products ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ NULL');
+        $this->database()->execute('ALTER TABLE categories ADD COLUMN deleted_at TIMESTAMP NULL');
+        $this->database()->execute('ALTER TABLE products ADD COLUMN deleted_at TIMESTAMP NULL');
     }
 
     public function down(): void

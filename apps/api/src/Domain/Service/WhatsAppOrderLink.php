@@ -10,7 +10,7 @@ use DomainException;
 final class WhatsAppOrderLink
 {
     /** @param OrderItem[] $items */
-    public static function generate(Order $order, array $items, ?string $whatsappNumber): string
+    public static function generate(Order $order, array $items, ?string $whatsappNumber, bool $walletEnabled = false, string $walletCredited = '0.00', string $walletRedeemed = '0.00', ?string $walletBalance = null): string
     {
         if ($whatsappNumber === null || trim($whatsappNumber) === '') {
             throw new DomainException('Business cannot currently receive orders.');
@@ -47,13 +47,8 @@ final class WhatsAppOrderLink
             $lines[] = 'Total: ' . $order->total;
         }
         $lines[] = '';
-        $lines[] = match ($order->fulfillmentType) {
-            'pickup' => 'Recolección en tienda',
-            'delivery' => 'Entrega a domicilio',
-            'dine_in' => 'Consumo en el local',
-            default => 'Método de entrega no especificado',
-        };
-        if ($order->fulfillmentType === 'delivery') {
+        $lines[] = $order->fulfillmentMethodSnapshot ?? 'Método de entrega no especificado';
+        if ($order->deliveryAddress !== null || $order->deliveryLatitude !== null) {
             if ($order->deliveryAddress !== null && trim($order->deliveryAddress) !== '') $lines[] = 'Dirección: ' . $order->deliveryAddress;
             if ($order->deliveryLatitude !== null && $order->deliveryLongitude !== null) $lines[] = 'Mapa: https://www.google.com/maps?q=' . $order->deliveryLatitude . ',' . $order->deliveryLongitude;
         }
@@ -62,6 +57,12 @@ final class WhatsAppOrderLink
             $lines[] = 'Subtotal: ' . number_format((float) $order->total - $fee, 2, '.', '');
             $lines[] = 'Costo de entrega: ' . number_format($fee, 2, '.', '');
             $lines[] = 'Total: ' . $order->total;
+        }
+        if ($walletEnabled) {
+            $lines[] = '';
+            $lines[] = 'Saldo acreditado: ' . $walletCredited;
+            if ((float) $walletRedeemed > 0) $lines[] = 'Saldo utilizado: ' . $walletRedeemed;
+            if ($walletBalance !== null) $lines[] = 'Saldo de monedero: ' . $walletBalance;
         }
         return 'https://wa.me/' . preg_replace('/\D+/', '', $whatsappNumber) . '?text=' . rawurlencode(implode("\n", $lines));
     }

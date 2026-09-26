@@ -6,6 +6,7 @@ import { of, throwError } from 'rxjs';
 import { BusinessApiService } from './business-api.service';
 import { Business } from './business.models';
 import { NotificationService } from '../shared/notification.service';
+import { FulfillmentMethodsModalComponent } from './business-settings/fulfillment-methods-modal/fulfillment-methods-modal.component';
 
 describe('business public catalog URL', () => {
   function load(business?: Business, baseHref = '/') {
@@ -22,25 +23,6 @@ describe('business public catalog URL', () => {
 
 describe('business hours helpers', () => { it('finds the days missing from the API response', () => expect(unconfiguredDays([{ day_of_week: 1 }, { day_of_week: 6 }])).toEqual([0, 2, 3, 4, 5])); });
 
-describe('business fulfillment settings', () => {
-  it('counts enabled methods so the last one can stay disabled in the UI', () => {
-    const component = Object.create(BusinessSettingsComponent.prototype) as BusinessSettingsComponent;
-    component.fulfillment = { pickup_enabled: true, delivery_enabled: false, dine_in_enabled: false };
-    expect(component.enabledCount()).toBe(1);
-  });
-  it('keeps fees available for the round trip', () => {
-    const component = Object.create(BusinessSettingsComponent.prototype) as BusinessSettingsComponent;
-    component.fulfillment = { pickup_enabled: true, delivery_enabled: true, dine_in_enabled: false, pickup_fee: null, delivery_fee: 30, dine_in_fee: null };
-    expect(component.fulfillment.delivery_fee).toBe(30);
-  });
-  it('blocks deleting the last payment method client-side', () => {
-    const component = Object.create(BusinessSettingsComponent.prototype) as BusinessSettingsComponent;
-    component.paymentMethods = [{ id: 1, name: 'Efectivo', position: 0 }]; component.businessId = 4;
-    component.deletePaymentMethod(component.paymentMethods[0]);
-    expect(component.paymentMethods.length).toBe(1);
-  });
-});
-
 describe('business profile save notifications', () => {
   function setup(update: jasmine.Spy) {
     const notification = jasmine.createSpyObj<NotificationService>('NotificationService', ['success', 'error']);
@@ -50,7 +32,7 @@ describe('business profile save notifications', () => {
     ] });
     const component = TestBed.runInInjectionContext(() => new BusinessSettingsComponent());
     component.businessId = 4;
-    component.profile.setValue({ name: 'Tienda', whatsapp_number: '', description: '', category: null, location: '' });
+    component.profile.setValue({ name: 'Tienda', whatsapp_number: '', facebook_url: '', instagram_url: '', website_url: '', description: '', category: null, location: '' });
     return { component, notification };
   }
 

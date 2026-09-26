@@ -24,14 +24,16 @@ class Order
     public ?string $fulfillmentFeeSnapshot = null;
     #[Column('integer', nullable: true, name: 'payment_method_id')]
     public ?int $paymentMethodId = null;
+    #[Column('integer', nullable: true, name: 'fulfillment_method_id')]
+    public ?int $fulfillmentMethodId = null;
     #[Column('integer', name: 'order_number')]
     public ?int $orderNumber = null;
     #[Column('integer', name: 'status_id')]
     public ?int $statusId = null;
     #[Column('string', nullable: true, name: 'payment_method_snapshot')]
     public ?string $paymentMethodSnapshot = null;
-    #[Column('string', nullable: true, name: 'fulfillment_type')]
-    public ?string $fulfillmentType = null;
+    #[Column('string', nullable: true, name: 'fulfillment_method_snapshot')]
+    public ?string $fulfillmentMethodSnapshot = null;
     #[Column('text', nullable: true, name: 'delivery_address')]
     public ?string $deliveryAddress = null;
     #[Column('decimal', nullable: true, name: 'delivery_latitude', typecast: 'float')]

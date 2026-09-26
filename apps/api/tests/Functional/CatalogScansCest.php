@@ -49,7 +49,7 @@ final class CatalogScansCest
 
     private function pdo(): \PDO
     {
-        return $this->pdoConnection ??= new \PDO(getenv('DATABASE_URL'), getenv('POSTGRES_USER'), getenv('POSTGRES_PASSWORD'));
+        return $this->pdoConnection ??= new \PDO(getenv('DATABASE_URL'), getenv('DB_USER'), getenv('DB_PASSWORD'));
     }
 
     private function request(FunctionalTester $tester, string $method, string $uri, array $body = [], ?string $token = null): \Psr\Http\Message\ResponseInterface

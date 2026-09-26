@@ -1,11 +1,11 @@
 ## Purpose
 
-Lets a customer build a selection of items from a public catalog, records that selection as an order intent before handoff, and produces the WhatsApp message/link that carries the conversation to the business.
+Lets a customer build a selection of items (with option-group choices) from a public catalog, choose a fulfillment method and payment method, records that as an order intent identified by phone before handoff, and produces the WhatsApp message/link that carries the conversation to the business.
 
 ## Requirements
 
 ### Requirement: Cart/selection management on the client
-The system SHALL allow a customer to add products to a selection, change item quantities, and remove items, entirely client-side, without requiring authentication.
+The system SHALL allow a customer to add products to a selection, choose values for each of a product's option groups (respecting each group's `selection_type` and `required` flag), change item quantities, and remove items, entirely client-side, without requiring authentication. An item's line price is its unit price plus the sum of the `price_delta` of every selected option value, multiplied by quantity.
 
 #### Scenario: Add item and change quantity
 - **WHEN** a customer adds a product to their selection and then increases its quantity
@@ -15,6 +15,14 @@ The system SHALL allow a customer to add products to a selection, change item qu
 - **WHEN** a customer adds a product that has no price to their selection
 - **THEN** the item appears in the selection and order summary without contributing to the computed total
 
+#### Scenario: Add item with selected options
+- **WHEN** a customer adds a product with an option group to their selection and selects one or more values
+- **THEN** the item's line price includes the selected values' `price_delta`s, and the selection displays which values were chosen
+
+#### Scenario: Required single-select group left unselected
+- **WHEN** a customer tries to add a product to their selection without selecting a value for a `required` single-select group
+- **THEN** the client blocks adding the item until a value is selected
+
 ### Requirement: Optional per-item notes
 The system SHALL allow a customer to attach a free-text note to an item in their selection (e.g. "no onions").
 
@@ -23,11 +31,23 @@ The system SHALL allow a customer to attach a free-text note to an item in their
 - **THEN** the persisted order item includes that note and it appears in the generated WhatsApp message
 
 ### Requirement: Order persistence before WhatsApp handoff
-The system SHALL expose `POST /public/orders`, which persists the customer's selection (items, quantities, notes, computed total) against the target business's catalog before the customer is redirected to WhatsApp. Persisting an order SHALL NOT imply payment, confirmation, or acceptance by the business.
+The system SHALL expose `POST /public/orders`, which persists the customer's selection (items, quantities, notes, selected option values, computed subtotal), a required phone number, the selected fulfillment method (with its fee at the time of order, if any), the selected payment method, and — when the fulfillment method requires it — the delivery address and/or coordinates, against the target business's catalog before the customer is redirected to WhatsApp. The system resolves the phone number to a per-business `Customer` record (see `customer-records`) and links the order to it; assigns the order a sequential number scoped to that business (starting at 1 for each business's first order, independent of any other business's numbering) and the business's current default status (see `order-status`); and validates each item's selected option values server-side (a `required` single-select group must have exactly one selected value from its own values, and a `multiple` group's selected values must all belong to that group). The order's total SHALL be the items subtotal plus the fulfillment method's fee (zero if none). Persisting an order SHALL NOT imply payment, confirmation, or acceptance by the business. See `order-fulfillment` for fulfillment-method and delivery-detail validation rules, and `payment-methods` for payment-method validation rules.
 
 #### Scenario: Successful order creation
-- **WHEN** a customer submits a non-empty selection for a published catalog's slug
-- **THEN** the system creates an `Order` with its `OrderItem`s and returns data sufficient to build the WhatsApp message
+- **WHEN** a customer submits a non-empty selection, a valid phone number, a valid fulfillment method, a valid payment method, and (when required) an address and/or coordinates, for a published catalog's slug
+- **THEN** the system creates an `Order` with its `OrderItem`s, linked to the resolved `Customer`, with a business-scoped sequential order number, the business's default status, the selected fulfillment method and its fee, the selected payment method, and any delivery details, with a total equal to the subtotal plus the fee, and returns data sufficient to build the WhatsApp message
+
+#### Scenario: Order numbers are independent per business
+- **WHEN** two different businesses each receive their first order
+- **THEN** each order is numbered 1, independently of the other business's numbering
+
+#### Scenario: Total includes a non-zero fulfillment fee
+- **WHEN** a customer's order has an items subtotal of 100 and selects a fulfillment method with a fee of 30
+- **THEN** the persisted order total is 130, with the subtotal and fee individually available to build the WhatsApp message
+
+#### Scenario: Missing phone number
+- **WHEN** a customer submits an order without a phone number
+- **THEN** the system rejects the request without creating an `Order` or a `Customer`
 
 #### Scenario: Empty selection
 - **WHEN** a customer submits an order with no items
@@ -37,8 +57,20 @@ The system SHALL expose `POST /public/orders`, which persists the customer's sel
 - **WHEN** a customer submits an order against a slug that is not currently published
 - **THEN** the system rejects the request
 
+#### Scenario: Missing required option selection
+- **WHEN** a customer submits an order item that omits a value for a `required` single-select group on that product
+- **THEN** the system rejects the request without creating an `Order`
+
+#### Scenario: Option value from a different product or group
+- **WHEN** a customer submits an order item selecting an option value that does not belong to one of that product's own option groups
+- **THEN** the system rejects the request without creating an `Order`
+
 ### Requirement: WhatsApp deep link generation
-The system SHALL generate a `wa.me` deep link to the business's configured WhatsApp number, pre-filled with a formatted message listing each ordered item (quantity, name, price if present, note if present) and the order total.
+The system SHALL generate a `wa.me` deep link to the business's configured WhatsApp number, pre-filled with a formatted message listing the order number, each ordered item (quantity, name, selected option values, price if present, note if present), the selected fulfillment method and its fee when non-zero, delivery details when applicable, the selected payment method, and the subtotal/fee/total breakdown.
+
+#### Scenario: Message includes the order number
+- **WHEN** an order is created
+- **THEN** the generated message states the order's business-scoped order number
 
 #### Scenario: Message formatting with priced items
 - **WHEN** an order contains only priced items
@@ -47,6 +79,26 @@ The system SHALL generate a `wa.me` deep link to the business's configured Whats
 #### Scenario: Message formatting with priceless items
 - **WHEN** an order contains one or more priceless items
 - **THEN** the generated message lists those items without a price and excludes them from the displayed total
+
+#### Scenario: Message formatting with selected options
+- **WHEN** an order item has one or more selected option values
+- **THEN** the generated message lists those values alongside the item, and the item's displayed price (when present) reflects their `price_delta`s
+
+#### Scenario: Message includes fulfillment method
+- **WHEN** an order has a selected fulfillment method
+- **THEN** the generated message states the chosen method in a human-readable form
+
+#### Scenario: Message includes delivery details
+- **WHEN** an order's fulfillment method requires an address
+- **THEN** the generated message includes the delivery address and/or a map link built from the coordinates, whichever was provided
+
+#### Scenario: Message includes a non-zero fulfillment fee
+- **WHEN** an order's fulfillment method has a non-zero fee
+- **THEN** the generated message shows a subtotal, the fee as its own line, and the total, in place of a single combined total line
+
+#### Scenario: Message includes the payment method
+- **WHEN** an order has a selected payment method
+- **THEN** the generated message states the selected payment method
 
 #### Scenario: Business has no WhatsApp number configured
 - **WHEN** an order is created for a business that has not configured a WhatsApp number

@@ -58,7 +58,7 @@ final readonly class OrderController
     private function map(array $entry): array
     {
         $order = $entry['order'];
-        $mapped = ['id' => $order->id, 'created_at' => $order->createdAt, 'customer_note' => $order->customerNote, 'customer_phone' => $entry['customer_phone'] ?? null, 'total' => $order->total, 'items' => array_map(static fn($item): array => ['name' => $item->productNameSnapshot, 'quantity' => $item->quantity, 'note' => $item->note], $entry['items'])];
+        $mapped = ['id' => $order->id, 'created_at' => $order->createdAt, 'customer_note' => $order->customerNote, 'customer_phone' => $entry['customer_phone'] ?? null, 'total' => $order->total, 'wallet_credited' => $entry['wallet_credited'] ?? null, 'wallet_redeemed' => $entry['wallet_redeemed'] ?? null, 'fulfillment_method_snapshot' => $order->fulfillmentMethodSnapshot, 'fulfillment_fee_snapshot' => $order->fulfillmentFeeSnapshot, 'items' => array_map(static fn($item): array => ['name' => $item->productNameSnapshot, 'quantity' => $item->quantity, 'note' => $item->note], $entry['items'])];
         if ($order->orderNumber !== null) $mapped['order_number'] = $order->orderNumber;
         if (($entry['status'] ?? null) !== null) $mapped['status'] = ['id' => $entry['status']->id, 'name' => $entry['status']->name, 'color' => $entry['status']->color];
         return $mapped;

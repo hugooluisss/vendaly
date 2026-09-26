@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Service;
 
-use App\Domain\Entity\{Business, Order, OrderItem, OrderItemOption, OrderStatus, PaymentMethod, Product};
-use App\Domain\Repository\{BusinessRepositoryInterface, CustomerRepositoryInterface, OrderRepositoryInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
+use App\Domain\Entity\{Business, FulfillmentMethod, Order, OrderItem, OrderItemOption, OrderStatus, PaymentMethod, Product};
+use App\Domain\Repository\{BusinessRepositoryInterface, CustomerRepositoryInterface, FulfillmentMethodRepositoryInterface, OrderRepositoryInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface, WalletRepositoryInterface};
 use DomainException;
 
 final readonly class OrderService
@@ -19,6 +19,8 @@ final readonly class OrderService
         private ?PaymentMethodRepositoryInterface $paymentMethods = null,
         private ?OrderStatusRepositoryInterface $orderStatuses = null,
         private ?CustomerRepositoryInterface $customers = null,
+        private ?FulfillmentMethodRepositoryInterface $fulfillmentMethods = null,
+        private ?WalletRepositoryInterface $wallet = null,
     ) {}
 
     /** @return list<array{order: Order, items: OrderItem[]}> */
@@ -37,7 +39,7 @@ final readonly class OrderService
         }, $entries);
     }
 
-    /** @param array{phone?:string,items?: list<array{product_id:int,quantity:int,note?:string}>,customer_note?:string,fulfillment_type?:string,delivery_address?:string,delivery_latitude?:float|string,delivery_longitude?:float|string} $input */
+    /** @param array{phone?:string,items?: list<array{product_id:int,quantity:int,note?:string}>,customer_note?:string,fulfillment_method_id?:int|string,delivery_address?:string,delivery_latitude?:float|string,delivery_longitude?:float|string} $input */
     public function create(string $slug, array $input): array
     {
         $business = $this->businesses->findPublishedBySlug($slug);
@@ -50,17 +52,45 @@ final readonly class OrderService
         if (!is_string($phone) || !PhoneNumber::isValid($phone)) {
             throw new DomainException('Valid phone number is required.');
         }
-        $this->validateFulfillment($business, $input);
+        $fulfillmentMethod = $this->validateFulfillment($business, $input);
         $paymentMethod = $this->validatePaymentMethod($business, $input);
         $status = $this->defaultStatus((int) $business->id);
 
         $products = $this->loadProducts($inputItems, (int) $business->id);
         $optionGroups = $this->options?->findByProductIds(array_keys($products)) ?? [];
-        [$order, $orderItems, $itemOptions] = $this->buildOrder($business, $input, $inputItems, $products, $optionGroups, $paymentMethod);
+        [$order, $orderItems, $itemOptions] = $this->buildOrder($business, $input, $inputItems, $products, $optionGroups, $paymentMethod, $fulfillmentMethod);
+        $walletCredit = '0.00';
+        $walletRedemption = '0.00';
+        $requestedRedemption = $input['wallet_redemption'] ?? $input['wallet_redeem_amount'] ?? null;
+        if ($requestedRedemption !== null && $requestedRedemption !== '') {
+            if (!is_numeric($requestedRedemption) || !is_finite((float) $requestedRedemption) || (float) $requestedRedemption < 0) throw new DomainException('Invalid wallet redemption.');
+            if ((float) $requestedRedemption > 0 && !$business->walletEnabled) throw new DomainException('Wallet redemption is unavailable.');
+        }
+        if ($business->walletEnabled) {
+            $creditCents = 0;
+            foreach ($inputItems as $inputItem) {
+                $product = $products[(int) ($inputItem['product_id'] ?? 0)] ?? null;
+                if ($product instanceof Product && $product->walletAmount !== null) $creditCents += (int) round((float) $product->walletAmount * 100) * (int) ($inputItem['quantity'] ?? 0);
+            }
+            $walletCredit = number_format($creditCents / 100, 2, '.', '');
+        }
+        if ($requestedRedemption !== null && $requestedRedemption !== '' && (float) $requestedRedemption > 0) {
+            if (!$business->walletEnabled || $this->wallet === null) throw new DomainException('Wallet redemption is unavailable.');
+            $walletRedemption = number_format((float) $requestedRedemption, 2, '.', '');
+            $customerId = $this->customerForPhone((int) $business->id, $phone);
+            $preOrderBalance = (float) ($this->wallet->balanceForCustomer($customerId));
+            $orderSubtotal = (float) ($order->total ?? 0);
+            $this->validateRedemption((float) $walletRedemption, $preOrderBalance, $orderSubtotal);
+        }
+        if ((float) $walletRedemption > 0 && $order->total !== null) $order->total = number_format(max(0, (float) $order->total - (float) $walletRedemption), 2, '.', '');
         $order->statusId = $status?->id;
-        $this->orders->createWithItems($order, $orderItems, $itemOptions, $phone);
+        $this->orders->createWithItems($order, $orderItems, $itemOptions, $phone, $walletCredit, $walletRedemption);
 
-        return ['order' => $order, 'items' => $orderItems, 'whatsapp_number' => $business->whatsappNumber];
+        $balance = null;
+        if ($business->walletEnabled && $this->wallet !== null && $order->customerId !== null) {
+            $balance = $this->wallet->balanceForCustomer($order->customerId);
+        }
+        return ['order' => $order, 'items' => $orderItems, 'whatsapp_number' => $business->whatsappNumber, 'wallet_enabled' => $business->walletEnabled, 'wallet_credited' => $walletCredit, 'wallet_redeemed' => $walletRedemption, 'wallet_balance' => $balance];
     }
 
     public function changeStatus(int $userId, int $businessId, int $orderId, int $statusId): Order
@@ -73,7 +103,28 @@ final readonly class OrderService
         foreach ($this->orderStatuses->findByBusinessId($businessId) as $candidate) if ((int) $candidate->id === $statusId) $status = $candidate;
         if (!$status instanceof OrderStatus) throw new DomainException('Invalid order status.');
         $order->statusId = $status->id;
-        return $this->orders->create($order);
+        $reversedAlready = $this->wallet?->hasReversalForOrder($orderId) ?? false;
+        $originals = $this->wallet?->originalTransactionsForOrder($orderId) ?? [];
+        $order = $this->orders->create($order);
+        if ($status->reversesWallet && $this->wallet !== null && $originals !== [] && !$reversedAlready) {
+            foreach ($originals as $transaction) {
+                if ($transaction->type === 'credit') $this->wallet->postTransaction($transaction->customerId, $orderId, 'reversal', number_format(-abs((float) $transaction->amount), 2, '.', ''));
+                if ($transaction->type === 'debit') $this->wallet->postTransaction($transaction->customerId, $orderId, 'reversal', number_format(abs((float) $transaction->amount), 2, '.', ''));
+            }
+        }
+        return $order;
+    }
+
+    private function customerForPhone(int $businessId, string $phone): int
+    {
+        if ($this->customers === null) throw new DomainException('Customer repository is unavailable.');
+        return (int) $this->customers->findOrCreateByPhone($businessId, $phone)->id;
+    }
+
+    private function validateRedemption(float $amount, float $balance, float $orderTotal): void
+    {
+        if ($amount > $balance) throw new DomainException('Wallet redemption exceeds the available balance.');
+        if ($amount > $orderTotal) throw new DomainException('Wallet redemption exceeds the order total.');
     }
 
     private function defaultStatus(int $businessId): ?OrderStatus
@@ -102,19 +153,19 @@ final readonly class OrderService
         return $products;
     }
 
-    private function buildOrder(Business $business, array $input, array $inputItems, array $products, array $optionGroups, ?PaymentMethod $paymentMethod): array
+    private function buildOrder(Business $business, array $input, array $inputItems, array $products, array $optionGroups, ?PaymentMethod $paymentMethod, FulfillmentMethod $fulfillmentMethod): array
     {
         $order = new Order();
         $order->businessId = (int) $business->id;
         $order->customerNote = $input['customer_note'] ?? null;
-        $order->fulfillmentType = $input['fulfillment_type'];
+        $order->fulfillmentMethodId = $fulfillmentMethod->id;
+        $order->fulfillmentMethodSnapshot = $fulfillmentMethod->name;
         $order->deliveryAddress = isset($input['delivery_address']) ? trim((string) $input['delivery_address']) ?: null : null;
         $order->deliveryLatitude = isset($input['delivery_latitude']) && $input['delivery_latitude'] !== '' ? (float) $input['delivery_latitude'] : null;
         $order->deliveryLongitude = isset($input['delivery_longitude']) && $input['delivery_longitude'] !== '' ? (float) $input['delivery_longitude'] : null;
         $order->paymentMethodId = $paymentMethod?->id;
         $order->paymentMethodSnapshot = $paymentMethod?->name;
-        $fees = ['pickup' => $business->pickupFee, 'delivery' => $business->deliveryFee, 'dine_in' => $business->dineInFee];
-        $order->fulfillmentFeeSnapshot = $fees[$order->fulfillmentType] ?? null;
+        $order->fulfillmentFeeSnapshot = $fulfillmentMethod->fee;
         $order->createdAt = date(DATE_ATOM);
         $orderItems = [];
         $totalCents = 0;
@@ -164,14 +215,14 @@ final readonly class OrderService
         throw new DomainException('Invalid payment method.');
     }
 
-    private function validateFulfillment(Business $business, array $input): string
+    private function validateFulfillment(Business $business, array $input): FulfillmentMethod
     {
-        $type = $input['fulfillment_type'] ?? null;
-        $enabled = ['pickup' => $business->pickupEnabled, 'delivery' => $business->deliveryEnabled, 'dine_in' => $business->dineInEnabled];
-        if (!is_string($type) || !array_key_exists($type, $enabled) || !$enabled[$type]) {
-            throw new DomainException('Invalid or unavailable fulfillment method.');
-        }
-        if ($type !== 'delivery') return $type;
+        $id = $input['fulfillment_method_id'] ?? null;
+        if ($this->fulfillmentMethods === null || $id === null || !is_numeric($id)) throw new DomainException('Invalid or unavailable fulfillment method.');
+        $method = null;
+        foreach ($this->fulfillmentMethods->findByBusinessId((int) $business->id) as $candidate) if ((int) $candidate->id === (int) $id) { $method = $candidate; break; }
+        if (!$method instanceof FulfillmentMethod) throw new DomainException('Invalid or unavailable fulfillment method.');
+        if (!$method->requiresAddress) return $method;
         $address = trim((string) ($input['delivery_address'] ?? ''));
         $hasLatitude = array_key_exists('delivery_latitude', $input) && $input['delivery_latitude'] !== '' && $input['delivery_latitude'] !== null;
         $hasLongitude = array_key_exists('delivery_longitude', $input) && $input['delivery_longitude'] !== '' && $input['delivery_longitude'] !== null;
@@ -182,7 +233,7 @@ final readonly class OrderService
             || ($hasLongitude && (!is_numeric($input['delivery_longitude']) || (float) $input['delivery_longitude'] < -180 || (float) $input['delivery_longitude'] > 180))) {
             throw new DomainException('Invalid delivery coordinates.');
         }
-        return $type;
+        return $method;
     }
 
     private function buildItem(Product $product, int $quantity, ?string $note, array $selected): OrderItem

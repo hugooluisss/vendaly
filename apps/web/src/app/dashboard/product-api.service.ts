@@ -9,6 +9,7 @@ export interface ProductInput {
   name: string;
   description?: string;
   price?: number | null;
+  wallet_amount?: number | null;
   is_active?: boolean;
   ingredients?: string[];
   options?: ProductOption[];
@@ -17,7 +18,8 @@ export interface ProductInput {
 export function productForm(input: ProductInput, image?: File): FormData {
   const body = new FormData();
   Object.entries(input).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) body.append(key, ['ingredients', 'options'].includes(key) ? JSON.stringify(value) : String(value));
+    if (value === null && key === 'wallet_amount') body.append(key, '');
+    else if (value !== undefined && value !== null) body.append(key, ['ingredients', 'options'].includes(key) ? JSON.stringify(value) : String(value));
   });
   if (image) body.append('image', image, image.name);
   return body;

@@ -1,5 +1,6 @@
 .overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 1rem; background: color-mix(in srgb, theme('colors.vendaly.slate') 60%, transparent); }
 .modal { width: min(100%, 42rem); max-height: calc(100vh - 2rem); overflow: auto; }
+.modal.modal-lg { width: min(100%, 64rem); }
 header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 h2 { margin: 0; letter-spacing: -.03em; }
 .close { padding: .1rem .45rem; font-size: 1.75rem; line-height: 1; }

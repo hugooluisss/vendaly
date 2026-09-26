@@ -29,11 +29,11 @@ final class CycleCatalogScanRepository extends CycleRepository implements Catalo
     public function countByDay(int $businessId, DateTimeImmutable $from, DateTimeImmutable $to): array
     {
         $rows = $this->orm->getSource(CatalogScan::class)->getDatabase()->query(
-            "SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS date, COUNT(*) AS count
+            "SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS date, COUNT(*) AS count
              FROM catalog_scans
              WHERE business_id = ? AND created_at >= ? AND created_at <= ?
-             GROUP BY date_trunc('day', created_at)
-             ORDER BY date_trunc('day', created_at)",
+             GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
+             ORDER BY DATE_FORMAT(created_at, '%Y-%m-%d')",
             [$businessId, $from->format('Y-m-d H:i:s'), $to->format('Y-m-d H:i:s')],
         )->fetchAll();
 

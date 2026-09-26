@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Web\Shared;
 
-use App\Domain\Entity\{Business, BusinessHours, Category, OrderStatus, PaymentMethod, Product};
+use App\Domain\Entity\{Business, BusinessHours, Category, FulfillmentMethod, OrderStatus, PaymentMethod, Product};
 
 final class PublicEntityMapper
 {
-    public static function business(Business $business, array $paymentMethods = [], array $orderStatuses = []): array
+    public static function business(Business $business, array $paymentMethods = [], array $orderStatuses = [], array $fulfillmentMethods = []): array
     {
         return [
             'id' => $business->id,
@@ -24,14 +24,10 @@ final class PublicEntityMapper
             'category' => $business->category,
             'location' => $business->location,
             'is_published' => $business->isPublished,
+            'wallet_enabled' => $business->walletEnabled,
             'latitude' => $business->latitude,
             'longitude' => $business->longitude,
-            'pickup_enabled' => $business->pickupEnabled,
-            'delivery_enabled' => $business->deliveryEnabled,
-            'dine_in_enabled' => $business->dineInEnabled,
-            'pickup_fee' => $business->pickupFee,
-            'delivery_fee' => $business->deliveryFee,
-            'dine_in_fee' => $business->dineInFee,
+            'fulfillment_methods' => array_map(self::fulfillmentMethod(...), $fulfillmentMethods),
             'payment_methods' => array_map(self::paymentMethod(...), $paymentMethods),
             'order_statuses' => array_map(self::orderStatus(...), $orderStatuses),
         ];
@@ -42,9 +38,14 @@ final class PublicEntityMapper
         return ['id' => $method->id, 'name' => $method->name, 'position' => $method->position];
     }
 
+    public static function fulfillmentMethod(FulfillmentMethod $method): array
+    {
+        return ['id' => $method->id, 'name' => $method->name, 'fee' => $method->fee, 'requires_address' => $method->requiresAddress, 'position' => $method->position];
+    }
+
     public static function orderStatus(OrderStatus $status): array
     {
-        return ['id' => $status->id, 'name' => $status->name, 'color' => $status->color, 'is_terminal' => $status->isTerminal, 'is_default' => $status->isDefault, 'position' => $status->position];
+        return ['id' => $status->id, 'name' => $status->name, 'color' => $status->color, 'is_terminal' => $status->isTerminal, 'is_default' => $status->isDefault, 'reverses_wallet' => $status->reversesWallet, 'position' => $status->position];
     }
 
     public static function hours(BusinessHours $hours): array
@@ -70,6 +71,7 @@ final class PublicEntityMapper
             'name' => $product->name,
             'description' => $product->description,
             'price' => $product->price,
+            'wallet_amount' => $product->walletAmount,
             'is_active' => $product->isActive,
             'position' => $product->position,
             'ingredients' => $product->ingredients ?? [],

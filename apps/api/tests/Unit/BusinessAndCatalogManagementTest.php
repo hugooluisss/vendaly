@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit;
 
-use App\Domain\Entity\{Business, BusinessHours, BusinessMember, Category, OrderStatus, PaymentMethod, Product, ProductImage, ProductOption};
+use App\Domain\Entity\{Business, BusinessHours, BusinessMember, Category, FulfillmentMethod, OrderStatus, PaymentMethod, Product, ProductImage, ProductOption};
 use App\Domain\Exception\ForbiddenException;
-use App\Domain\Repository\{BusinessManagementRepositoryInterface, CategoryManagementRepositoryInterface, ObjectStorageInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductManagementRepositoryInterface, ProductOptionRepositoryInterface};
+use App\Domain\Repository\{BusinessManagementRepositoryInterface, CategoryManagementRepositoryInterface, FulfillmentMethodRepositoryInterface, ObjectStorageInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductManagementRepositoryInterface, ProductOptionRepositoryInterface};
 use App\Domain\Service\{BusinessMemberGuard, BusinessService, CategoryService, CatalogService, ProductService};
 use DomainException;
 use HttpSoft\Message\{ResponseFactory, ServerRequest, StreamFactory};
@@ -31,10 +31,13 @@ final class BusinessAndCatalogManagementTest extends TestCase
 
     public function testBusinessCreationSeedsAndPaymentMethodsAreManaged(): void
     {
-        $repo = new ManagementBusinesses(); $payments = new ManagementPaymentMethods();
-        $business = (new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage(), $payments))->create(7, 'Cafe');
+        $repo = new ManagementBusinesses(); $payments = new ManagementPaymentMethods(); $fulfillments = new ManagementFulfillmentMethods();
+        $business = (new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage(), $payments, fulfillmentMethods: $fulfillments))->create(7, 'Cafe');
         self::assertSame('Efectivo', $payments->items[0]->name);
-        $service = new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage(), $payments);
+        self::assertSame('Consumo en el local', $fulfillments->items[0]->name);
+        self::assertFalse($fulfillments->items[0]->requiresAddress);
+        self::assertNull($fulfillments->items[0]->fee);
+        $service = new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage(), $payments, fulfillmentMethods: $fulfillments);
         $added = $service->addPaymentMethod(7, (int) $business->id, 'Transferencia');
         $service->updatePaymentMethod(7, (int) $business->id, (int) $added->id, ['name' => 'Tarjeta', 'position' => 0]);
         $service->deletePaymentMethod(7, (int) $business->id, (int) $payments->items[0]->id);
@@ -42,14 +45,27 @@ final class BusinessAndCatalogManagementTest extends TestCase
         $service->deletePaymentMethod(7, (int) $business->id, (int) $added->id);
     }
 
-    public function testBusinessCreationSeedsFourOrderStatuses(): void
+    public function testBusinessCreationSeedsDefaultHoursAndSixOrderStatuses(): void
     {
         $repo = new ManagementBusinesses();
         $statuses = new ManagementOrderStatuses();
         $business = (new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage(), null, $statuses))->create(7, 'Cafe');
-        self::assertSame(['Creado', 'Elaborando', 'Entregado', 'Cancelado'], array_map(static fn(OrderStatus $s): string => $s->name, $statuses->findByBusinessId((int) $business->id)));
+        self::assertSame(['recibido', 'confirmado', 'preparando', 'entregado', 'terminado', 'cancelado'], array_map(static fn(OrderStatus $s): string => $s->name, $statuses->findByBusinessId((int) $business->id)));
         self::assertSame(1, count(array_filter($statuses->items, static fn(OrderStatus $s): bool => $s->isDefault)));
         self::assertSame(2, count(array_filter($statuses->items, static fn(OrderStatus $s): bool => $s->isTerminal)));
+        $hours = $repo->findHours((int) $business->id);
+        self::assertCount(7, $hours);
+        foreach ($hours as $hour) {
+            if ($hour->dayOfWeek === 0 || $hour->dayOfWeek === 6) {
+                self::assertTrue($hour->isClosed);
+                self::assertNull($hour->opensAt);
+                self::assertNull($hour->closesAt);
+            } else {
+                self::assertFalse($hour->isClosed);
+                self::assertSame('09:00:00', $hour->opensAt);
+                self::assertSame('20:00:00', $hour->closesAt);
+            }
+        }
     }
 
     public function testOrderStatusCrudDefaultColorAndDeleteGuards(): void
@@ -84,14 +100,22 @@ final class BusinessAndCatalogManagementTest extends TestCase
         $statuses->referenced = false; $service->deleteOrderStatus(7, 1, 2); self::assertCount(1, $statuses->items);
     }
 
-    public function testFulfillmentFeesCanBeSetAndCleared(): void
+    public function testFulfillmentMethodCrudAndLastMethodGuard(): void
     {
         $repo = new ManagementBusinesses(); $business = $this->business(1); $repo->businesses[] = $business; $repo->members[] = $this->member(1, 7);
-        $service = new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage());
-        $service->updateProfile(7, 1, ['delivery_enabled' => true, 'delivery_fee' => 30]);
-        self::assertSame('30.00', $business->deliveryFee);
-        $service->updateProfile(7, 1, ['delivery_fee' => null]);
-        self::assertNull($business->deliveryFee);
+        $methods = new ManagementFulfillmentMethods();
+        $default = new FulfillmentMethod(); $default->id = 99; $default->businessId = 1; $default->name = 'Consumo en el local'; $methods->items[] = $default;
+        $service = new BusinessService($repo, new BusinessMemberGuard($repo), new FakeStorage(), fulfillmentMethods: $methods);
+        $added = $service->addFulfillmentMethod(7, 1, ['name' => 'Envío especial', 'fee' => 30, 'requires_address' => true]);
+        self::assertSame('30.00', $added->fee);
+        self::assertTrue($added->requiresAddress);
+        $service->updateFulfillmentMethod(7, 1, (int) $added->id, ['name' => 'Envío foráneo', 'fee' => null, 'requires_address' => false]);
+        self::assertSame('Envío foráneo', $added->name);
+        self::assertNull($added->fee);
+        self::assertFalse($added->requiresAddress);
+        $service->deleteFulfillmentMethod(7, 1, (int) $added->id);
+        $this->expectExceptionMessage('At least one fulfillment method must remain.');
+        $service->deleteFulfillmentMethod(7, 1, (int) $default->id);
     }
 
     public function testPublishingRejectsEmptyPaymentMethods(): void
@@ -131,6 +155,27 @@ final class BusinessAndCatalogManagementTest extends TestCase
         self::assertSame('Roma Norte', $business->location);
         $this->expectException(DomainException::class);
         $service->updateProfile(7, 1, ['whatsapp_number' => 'not-a-phone']);
+    }
+
+    public function testWalletProfileProductAndStatusFields(): void
+    {
+        $businesses = new ManagementBusinesses(); $business = $this->business(1); $businesses->businesses[] = $business; $businesses->members[] = $this->member(1, 7);
+        $businessService = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage());
+        self::assertFalse($business->walletEnabled);
+        $businessService->updateProfile(7, 1, ['wallet_enabled' => true]); self::assertTrue($business->walletEnabled);
+        $businessService->updateProfile(7, 1, ['wallet_enabled' => false]); self::assertFalse($business->walletEnabled);
+
+        $categories = new ManagementCategories(); $category = new Category(); $category->id = 4; $category->businessId = 1; $categories->items[] = $category;
+        $products = new ManagementProducts(); $productService = new ProductService($products, $categories, new BusinessMemberGuard($businesses), new FakeStorage());
+        $product = $productService->create(7, 1, ['category_id' => 4, 'name' => 'Wallet item', 'wallet_amount' => '2.50']);
+        self::assertSame('2.50', $product->walletAmount);
+        $productService->update(7, 1, (int) $product->id, ['wallet_amount' => null]); self::assertNull($product->walletAmount);
+        try { $productService->update(7, 1, (int) $product->id, ['wallet_amount' => -1]); self::fail('Expected negative wallet amount rejection.'); } catch (DomainException $e) { self::assertSame('Invalid wallet_amount.', $e->getMessage()); }
+
+        $statuses = new ManagementOrderStatuses(); $status = new OrderStatus(); $status->id = 3; $status->businessId = 1; $status->name = 'Working'; $statuses->items[] = $status;
+        $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage(), null, $statuses);
+        $service->updateOrderStatus(7, 1, 3, ['reverses_wallet' => true]);
+        self::assertTrue($status->reversesWallet); self::assertFalse($status->isTerminal);
     }
 
     public function testProfileRejectsInvalidCategoryAndAllowsUnsetFields(): void
@@ -429,32 +474,16 @@ final class BusinessAndCatalogManagementTest extends TestCase
         self::assertTrue($business->isPublished);
     }
 
-    public function testFulfillmentMethodsKeepOneEnabled(): void
-    {
-        $businesses = new ManagementBusinesses();
-        $business = $this->business(1);
-        $businesses->businesses[] = $business;
-        $businesses->members[] = $this->member(1, 7);
-        $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage());
-        $service->updateProfile(7, 1, ['pickup_enabled' => false, 'delivery_enabled' => true]);
-        self::assertFalse($business->pickupEnabled);
-        self::assertTrue($business->deliveryEnabled);
-        $this->expectException(DomainException::class);
-        $service->updateProfile(7, 1, ['delivery_enabled' => false]);
-        self::assertTrue($business->deliveryEnabled);
-    }
-
     public function testPublishingRejectsNoFulfillmentMethodsAfterCoordinateCheck(): void
     {
         $businesses = new ManagementBusinesses();
         $business = $this->business(1);
         $business->latitude = 19.4326;
         $business->longitude = -99.1332;
-        $business->pickupEnabled = $business->deliveryEnabled = $business->dineInEnabled = false;
         $businesses->businesses[] = $business;
         $businesses->members[] = $this->member(1, 7);
-        $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage());
-        $this->expectExceptionMessage('At least one fulfillment method must be enabled.');
+        $service = new BusinessService($businesses, new BusinessMemberGuard($businesses), new FakeStorage(), fulfillmentMethods: new ManagementFulfillmentMethods());
+        $this->expectExceptionMessage('At least one fulfillment method must be configured.');
         $service->setPublished(7, 1, true);
     }
 
@@ -573,6 +602,14 @@ final class ManagementPaymentMethods implements PaymentMethodRepositoryInterface
     public function create(PaymentMethod $method): PaymentMethod { $method->id ??= count($this->items) + 1; $this->items[] = $method; return $method; }
     public function update(PaymentMethod $method): PaymentMethod { return $method; }
     public function delete(PaymentMethod $method): void { $this->items = array_values(array_filter($this->items, static fn(PaymentMethod $m): bool => $m !== $method)); }
+}
+final class ManagementFulfillmentMethods implements FulfillmentMethodRepositoryInterface
+{
+    public array $items = [];
+    public function findByBusinessId(int $businessId): array { return array_values(array_filter($this->items, static fn(FulfillmentMethod $m): bool => $m->businessId === $businessId)); }
+    public function create(FulfillmentMethod $method): FulfillmentMethod { $method->id ??= count($this->items) + 1; $this->items[] = $method; return $method; }
+    public function update(FulfillmentMethod $method): FulfillmentMethod { return $method; }
+    public function delete(FulfillmentMethod $method): void { $this->items = array_values(array_filter($this->items, static fn(FulfillmentMethod $m): bool => $m !== $method)); }
 }
 final class ManagementOrderStatuses implements OrderStatusRepositoryInterface
 {

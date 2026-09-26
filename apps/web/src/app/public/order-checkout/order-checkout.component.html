@@ -1,1 +1,44 @@
-<main class="catalog-shell summary"><button type="button" class="back text-vendaly-orange" (click)="back()">← Volver a tu selección</button><p class="eyebrow">CHECKOUT</p><h1>Confirma tu pedido</h1>@if (cart.items.length) {@if (catalog$ | async; as catalog) {<div class="total"><span>Subtotal</span><strong class="text-vendaly-orange">{{ cart.total() | currency:'MXN':'symbol':'1.2-2' }}</strong></div><label class="checkout-phone">Tu teléfono<input class="field-input" type="tel" autocomplete="tel" required [(ngModel)]="customerPhone" placeholder="+52 55 1234 5678"></label><fieldset><legend>Método de pedido</legend>@for (method of catalog.fulfillment_methods; track methodType(method)) {<label class="choice"><input class="field-radio" type="radio" name="fulfillment" [value]="methodType(method)" [(ngModel)]="selectedMethod">{{ methodType(method) === 'pickup' ? 'Recolección en tienda' : methodType(method) === 'delivery' ? 'Entrega a domicilio' : 'Consumo en el local' }}@if (methodFee(method)) {<span>{{ methodFee(method) | currency:'MXN':'symbol':'1.2-2' }}</span>}</label>}</fieldset>@if (selectedMethod === 'delivery') {<label>Dirección de entrega<input class="field-input" [(ngModel)]="deliveryAddress" placeholder="Calle, número, colonia"></label><label>Ubicación en el mapa</label><app-map mode="pin" [center]="mapCenter" [initialPosition]="deliveryPosition" (positionChanged)="onDeliveryPositionChanged($event)"></app-map>}<fieldset><legend>Método de pago</legend>@for (method of catalog.payment_methods; track method.id) {<label class="choice"><input class="field-radio" type="radio" name="payment" [value]="method.id" [(ngModel)]="selectedPaymentMethod">{{ method.name }}</label>}</fieldset>@if (selectedFee(catalog.fulfillment_methods)) {<div class="total"><span>Costo de envío</span><strong class="text-vendaly-orange">{{ selectedFee(catalog.fulfillment_methods) | currency:'MXN':'symbol':'1.2-2' }}</strong></div>}<div class="total"><span>Total</span><strong class="text-vendaly-orange">{{ grandTotal(catalog.fulfillment_methods) | currency:'MXN':'symbol':'1.2-2' }}</strong></div>}@if (error) {<p class="error text-vendaly-danger" role="alert">{{ error }}</p>}<button type="button" class="submit" [disabled]="submitting || !canSubmit()" (click)="submit()">{{ submitting ? 'Enviando…' : 'Enviar por WhatsApp' }}</button>} @else {<p class="muted">Aún no has agregado productos.</p>}</main>
+<main class="catalog-shell summary">
+  <button type="button" class="back text-vendaly-orange" (click)="back()">← Volver a tu selección</button>
+  <p class="eyebrow">CHECKOUT</p>
+  <h1>Confirma tu pedido</h1>
+  @if (cart.items.length) {
+    @if (orderResponse; as result) {
+      <section class="wallet-result card" aria-live="polite">
+        <h2>Pedido listo</h2>
+        @if (result.wallet_enabled) {
+          <p>Saldo actual de tu monedero: <strong>{{ result.wallet_balance ?? '0' | currency:'MXN':'symbol':'1.2-2' }}</strong></p>
+          @if (+result.wallet_credited! > 0) { <p>Crédito de este pedido: <strong>{{ result.wallet_credited | currency:'MXN':'symbol':'1.2-2' }}</strong></p> }
+          @if (+result.wallet_redeemed! > 0) { <p>Usaste del monedero: <strong>{{ result.wallet_redeemed | currency:'MXN':'symbol':'1.2-2' }}</strong></p> }
+        }
+        <p>Confirma tu pedido por WhatsApp para enviarlo al negocio.</p>
+        <button type="button" class="submit" (click)="openWhatsApp()">Continuar a WhatsApp</button>
+      </section>
+    } @else {
+      @if (catalog$ | async; as catalog) {
+        <div class="total"><span>Subtotal</span><strong class="text-vendaly-orange">{{ cart.total() | currency:'MXN':'symbol':'1.2-2' }}</strong></div>
+        <label class="checkout-phone">Tu teléfono<input class="field-input" type="tel" autocomplete="tel" required [(ngModel)]="customerPhone" (ngModelChange)="phoneChanged()" placeholder="+52 55 1234 5678"></label>
+        @if (walletEnabled && knownWalletBalance !== null) {
+          <section class="wallet-checkout card">
+            <h2>Monedero</h2>
+            <p>Saldo disponible: <strong>{{ knownWalletBalance | currency:'MXN':'symbol':'1.2-2' }}</strong></p>
+            @if (knownWalletBalance > 0) {
+              <label>¿Cuánto quieres usar en este pedido?
+                <input class="field-input" type="number" min="0" step="0.01" [max]="maxWalletRedemption" [(ngModel)]="walletRedemption" name="walletRedemption">
+                <small>Máximo {{ maxWalletRedemption | currency:'MXN':'symbol':'1.2-2' }}</small>
+              </label>
+            }
+          </section>
+        }
+        <fieldset><legend>Método de pedido</legend>@for (method of catalog.fulfillment_methods; track method.id) {<label class="choice"><input class="field-radio" type="radio" name="fulfillment" [value]="method.id" [(ngModel)]="selectedMethod">{{ method.name }}@if (methodFee(method)) {<span>{{ methodFee(method) | currency:'MXN':'symbol':'1.2-2' }}</span>}</label>}</fieldset>
+        @if (selectedMethodRequiresAddress) {<label>Dirección de entrega<input class="field-input" [(ngModel)]="deliveryAddress" placeholder="Calle, número, colonia"></label><label>Ubicación en el mapa</label><app-map mode="pin" [center]="mapCenter" [initialPosition]="deliveryPosition" (positionChanged)="onDeliveryPositionChanged($event)"></app-map>}
+        <fieldset><legend>Método de pago</legend>@for (method of catalog.payment_methods; track method.id) {<label class="choice"><input class="field-radio" type="radio" name="payment" [value]="method.id" [(ngModel)]="selectedPaymentMethod">{{ method.name }}</label>}</fieldset>
+        @if (selectedFee(catalog.fulfillment_methods)) {<div class="total"><span>Costo de envío</span><strong class="text-vendaly-orange">{{ selectedFee(catalog.fulfillment_methods) | currency:'MXN':'symbol':'1.2-2' }}</strong></div>}
+        @if (appliedWalletRedemption > 0) {<div class="total"><span>Descuento del monedero</span><strong class="text-vendaly-orange">−{{ appliedWalletRedemption | currency:'MXN':'symbol':'1.2-2' }}</strong></div>}
+        <div class="total"><span>Total</span><strong class="text-vendaly-orange">{{ payableTotal | currency:'MXN':'symbol':'1.2-2' }}</strong></div>
+      }
+      @if (error) {<p class="error text-vendaly-danger" role="alert">{{ error }}</p>}
+      <button type="button" class="submit" [disabled]="submitting || !canSubmit()" (click)="submit()">{{ submitting ? 'Enviando…' : 'Enviar por WhatsApp' }}</button>
+    }
+  } @else { <p class="muted">Aún no has agregado productos.</p> }
+</main>

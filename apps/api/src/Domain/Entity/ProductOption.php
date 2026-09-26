@@ -17,7 +17,7 @@ class ProductOption
     public string $name = '';
     #[Column('string', name: 'selection_type')]
     public string $selectionType = 'single';
-    #[Column('boolean', default: false)]
+    #[Column('boolean', default: false, typecast: 'bool')]
     public bool $required = false;
     #[Column('integer')]
     public int $position = 0;

@@ -22,7 +22,9 @@ class Product
     public ?string $description = null;
     #[Column('decimal', nullable: true)]
     public ?string $price = null;
-    #[Column('boolean', name: 'is_active', default: true)]
+    #[Column('decimal', name: 'wallet_amount', nullable: true)]
+    public ?string $walletAmount = null;
+    #[Column('boolean', name: 'is_active', default: true, typecast: 'bool')]
     public bool $isActive = true;
     #[Column('integer')]
     public int $position = 0;

@@ -20,6 +20,6 @@ class BusinessHours
     public ?string $opensAt = null;
     #[Column('time', nullable: true, name: 'closes_at')]
     public ?string $closesAt = null;
-    #[Column('boolean', name: 'is_closed', default: false)]
+    #[Column('boolean', name: 'is_closed', default: false, typecast: 'bool')]
     public bool $isClosed = false;
 }

@@ -12,11 +12,11 @@ export interface PublicProductOptionValue { id: number; name: string; price_delt
 export interface PublicProductOption { id: number; name: string; selection_type: 'single' | 'multiple'; required: boolean; values: PublicProductOptionValue[]; }
 
 export interface PublicCategory { id: number; name: string; products: PublicProduct[]; }
-export interface PublicFulfillmentMethod { type: 'pickup' | 'delivery' | 'dine_in'; fee?: number | string | null; }
+export interface PublicFulfillmentMethod { id: number; name: string; fee?: number | string | null; requires_address: boolean; }
 export interface PublicPaymentMethod { id: number; name: string; position?: number; }
 export interface BusinessHours { dayOfWeek: number; opensAt?: string | null; closesAt?: string | null; isClosed: boolean; }
 export interface PublicCatalog {
-  business: { name: string; description?: string | null; logoUrl?: string | null; cover_image_url?: string | null; whatsapp_number?: string | null; facebook_url?: string | null; instagram_url?: string | null; website_url?: string | null };
+  business: { wallet_enabled?: boolean; name: string; description?: string | null; logoUrl?: string | null; cover_image_url?: string | null; whatsapp_number?: string | null; facebook_url?: string | null; instagram_url?: string | null; website_url?: string | null };
   hours: BusinessHours[];
   fulfillment_methods: PublicFulfillmentMethod[];
   payment_methods: PublicPaymentMethod[];

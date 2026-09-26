@@ -1,13 +1,13 @@
 import { of, throwError } from 'rxjs';
-import { BusinessSettingsComponent } from './business-settings.component';
-import { OrderStatus } from '../business.models';
-import { NotificationService } from '../../shared/notification.service';
+import { OrderStatusesModalComponent } from './order-statuses-modal.component';
+import { OrderStatus } from '../../business.models';
+import { NotificationService } from '../../../shared/notification.service';
 
 const status = (id: number, name: string, isDefault = false): OrderStatus => ({ id, name, color: '#EA580C', is_terminal: false, is_default: isDefault, position: id - 1 });
 
 describe('business order status settings', () => {
   function component(api: Partial<Record<string, jasmine.Func>> = {}) {
-    const result = Object.create(BusinessSettingsComponent.prototype) as BusinessSettingsComponent;
+    const result = Object.create(OrderStatusesModalComponent.prototype) as OrderStatusesModalComponent;
     result.businessId = 4; result.orderStatuses = [status(1, 'Creado', true), status(2, 'Listo')];
     (result as unknown as { api: unknown }).api = api;
     (result as unknown as { notification: jasmine.SpyObj<NotificationService> }).notification = jasmine.createSpyObj<NotificationService>('NotificationService', ['success', 'error']);

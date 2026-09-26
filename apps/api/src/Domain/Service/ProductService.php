@@ -39,6 +39,7 @@ final readonly class ProductService
         $product->name = trim((string) ($input['name'] ?? ''));
         $product->description = array_key_exists('description', $input) ? ($input['description'] === null ? null : (string) $input['description']) : null;
         $product->price = array_key_exists('price', $input) && $input['price'] !== '' && $input['price'] !== null ? (string) $input['price'] : null;
+        $product->walletAmount = $this->normalizeWalletAmount($input['wallet_amount'] ?? null);
         $product->isActive = (bool) ($input['is_active'] ?? true);
         $product->position = (int) ($input['position'] ?? 0);
         $product->createdAt = date(DATE_ATOM);
@@ -72,6 +73,7 @@ final readonly class ProductService
         if (array_key_exists('price', $input)) {
             $product->price = $input['price'] === '' || $input['price'] === null ? null : (string) $input['price'];
         }
+        if (array_key_exists('wallet_amount', $input)) $product->walletAmount = $this->normalizeWalletAmount($input['wallet_amount']);
         if (array_key_exists('is_active', $input)) {
             $product->isActive = (bool) $input['is_active'];
         }
@@ -107,6 +109,12 @@ final readonly class ProductService
         $image->url = $url;
         $image->createdAt = date(DATE_ATOM);
         $this->products->saveImage($image);
+    }
+    private function normalizeWalletAmount(mixed $amount): ?string
+    {
+        if ($amount === null || $amount === '') return null;
+        if (!is_numeric($amount) || !is_finite((float) $amount) || (float) $amount < 0) throw new DomainException('Invalid wallet_amount.');
+        return number_format((float) $amount, 2, '.', '');
     }
     private function replaceIngredients(Product $product, array $input): void
     {

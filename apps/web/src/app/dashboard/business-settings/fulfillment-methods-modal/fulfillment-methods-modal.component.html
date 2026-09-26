@@ -1,0 +1,38 @@
+<app-modal title="Métodos de pedido" (close)="close.emit()">
+  <div class="fulfillment-form">
+    <p class="form-title">{{ editingMethod ? 'Editar método' : 'Nuevo método' }}</p>
+    <div class="form-row">
+      <input class="field-input" [(ngModel)]="methodInput" placeholder="Ej. Envío foráneo" aria-label="Nombre del método">
+      <input class="field-input" type="number" min="0" step="0.01" [(ngModel)]="feeInput" (ngModelChange)="feeInput = clampFee($event)" placeholder="Costo opcional" aria-label="Costo opcional">
+    </div>
+    <div class="form-row form-row-actions">
+      <label><input type="checkbox" class="field-checkbox" [(ngModel)]="requiresAddressInput"> Requiere dirección</label>
+      <div class="form-buttons">
+        @if (editingMethod) {
+          <button type="button" class="btn btn-secondary" (click)="cancelEdit()">Cancelar</button>
+        }
+        <button type="button" class="btn btn-primary" (click)="submit()">{{ editingMethod ? 'Guardar' : 'Agregar' }}</button>
+      </div>
+    </div>
+  </div>
+
+  <table class="fulfillment-table">
+    <thead>
+      <tr><th>Nombre</th><th>Costo</th><th>Requiere dirección</th><th></th></tr>
+    </thead>
+    <tbody>
+      @for (method of fulfillmentMethods; track method.id) {
+        <tr [class.editing]="editingMethod?.id === method.id">
+          <td>{{ method.name }}</td>
+          <td>{{ method.fee != null && method.fee !== '' ? '$' + method.fee : 'Sin costo' }}</td>
+          <td>{{ method.requires_address ? 'Sí' : 'No' }}</td>
+          <td class="fulfillment-actions">
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Editar método" (click)="startEdit(method)"><lucide-icon [img]="icons.Pencil" [size]="16"></lucide-icon></button>
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Eliminar método" [disabled]="fulfillmentMethods.length === 1" (click)="deleteFulfillmentMethod(method)"><lucide-icon [img]="icons.Trash2" [size]="16"></lucide-icon></button>
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+  <small>Debes mantener al menos un método de pedido.</small>
+</app-modal>

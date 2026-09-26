@@ -51,7 +51,7 @@ final class CatalogOptionsCest
         assertSame('5', $product['options'][0]['values'][1]['price_delta']);
     }
 
-    public function businessProfileAcceptsFulfillmentMethods(FunctionalTester $tester): void
+    public function businessManagesDynamicFulfillmentMethods(FunctionalTester $tester): void
     {
         $email = 'fulfillment-' . uniqid() . '@example.com';
         $auth = $this->request($tester, 'POST', '/auth/register', ['email' => $email, 'password' => 'password-123']);
@@ -60,11 +60,19 @@ final class CatalogOptionsCest
         $business = $this->request($tester, 'POST', '/businesses', ['name' => 'Fulfillment ' . uniqid()], $token);
         assertSame(201, $business->getStatusCode());
         $businessId = json_decode($business->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['business']['id'];
-        $response = $this->request($tester, 'PATCH', "/businesses/{$businessId}", ['pickup_enabled' => false, 'delivery_enabled' => true], $token);
-        assertSame(200, $response->getStatusCode());
-        $data = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['business'];
-        assertSame(false, $data['pickup_enabled']);
-        assertSame(true, $data['delivery_enabled']);
+        $methods = json_decode($this->request($tester, 'GET', "/businesses/{$businessId}/fulfillment-methods", [], $token)->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['fulfillment_methods'];
+        assertSame(['Consumo en el local'], array_column($methods, 'name'));
+        assertSame(false, $methods[0]['requires_address']);
+        $created = $this->request($tester, 'POST', "/businesses/{$businessId}/fulfillment-methods", ['name' => 'Envío foráneo', 'fee' => 30, 'requires_address' => true], $token);
+        assertSame(201, $created->getStatusCode());
+        $methodId = json_decode($created->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['fulfillment_method']['id'];
+        $renamed = $this->request($tester, 'PATCH', "/businesses/{$businessId}/fulfillment-methods/{$methodId}", ['name' => 'Envío regional', 'fee' => null, 'requires_address' => false], $token);
+        $method = json_decode($renamed->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['fulfillment_method'];
+        assertSame('Envío regional', $method['name']);
+        assertSame(null, $method['fee']);
+        assertSame(false, $method['requires_address']);
+        assertSame(200, $this->request($tester, 'DELETE', "/businesses/{$businessId}/fulfillment-methods/{$methodId}", [], $token)->getStatusCode());
+        assertSame(422, $this->request($tester, 'DELETE', "/businesses/{$businessId}/fulfillment-methods/{$methods[0]['id']}", [], $token)->getStatusCode());
     }
 
     public function businessProfileManagesFeesAndPaymentMethods(FunctionalTester $tester): void
@@ -74,8 +82,6 @@ final class CatalogOptionsCest
         $token = json_decode($auth->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['access_token'];
         $business = $this->request($tester, 'POST', '/businesses', ['name' => 'Payments ' . uniqid()], $token);
         $businessId = json_decode($business->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['business']['id'];
-        $updated = $this->request($tester, 'PATCH', "/businesses/{$businessId}", ['delivery_enabled' => true, 'delivery_fee' => 30], $token);
-        assertSame('30.00', json_decode($updated->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['business']['delivery_fee']);
         $created = $this->request($tester, 'POST', "/businesses/{$businessId}/payment-methods", ['name' => 'Transferencia'], $token);
         assertSame(201, $created->getStatusCode());
         $methods = json_decode($this->request($tester, 'GET', "/businesses/{$businessId}/payment-methods", [], $token)->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR)['payment_methods'];

@@ -1,4 +1,8 @@
 .heading, .actions, li, .product-info, .row-actions, .form-actions { display: flex; align-items: center; gap: .6rem; }
+.pagination { display: flex; align-items: center; justify-content: center; gap: .75rem; margin-top: 1rem; }
+.pagination button { min-width: auto; }
+li button.product-action { display: inline-flex; width: 2.25rem; height: 2.25rem; min-width: 2.25rem; align-items: center; justify-content: center; padding: .45rem; }
+.product-action svg { width: 1.1rem; height: 1.1rem; }
 .heading { justify-content: space-between; gap: 1rem; } .actions { margin: 1.5rem 0 2rem; } h1, h2 { letter-spacing: -.03em; } h2 { margin-top: 0; }
 form, label { display: grid; gap: .4rem; margin: .7rem 0; } textarea { resize: vertical; }
 .ingredient-entry, .ingredient-chips { display: flex; gap: .5rem; flex-wrap: wrap; }.ingredient-entry input { flex: 1; min-width: 10rem; }.ingredient-chip { display: inline-flex; align-items: center; gap: .35rem; padding: .4rem .55rem .4rem .7rem; border: 1px solid theme('colors.vendaly.border-strong'); border-radius: 999px; background: theme('colors.vendaly.orange-soft'); color: theme('colors.vendaly.slate'); }.ingredient-chip button { min-width: 0; padding: 0; border: 0; background: none; font-size: 1.1rem; line-height: 1; cursor: pointer; }

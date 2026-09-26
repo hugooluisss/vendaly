@@ -29,3 +29,4 @@ button { border: 0; border-radius: 999px; padding: .65rem 1rem; font: inherit; f
 .contact-icon:hover, .contact-icon:focus-visible { background: theme('colors.vendaly.orange'); outline: 2px solid white; outline-offset: 2px; }
 @media (min-width: 620px) { .business-contacts { top: 1rem; right: 1.5rem; } }
 @media (min-width: 960px) { .business-contacts { top: 1.25rem; right: 1.25rem; } }
+.wallet-checkout, .wallet-result { margin: 1rem 0; }.wallet-checkout h2, .wallet-result h2 { margin-bottom: .5rem; }.wallet-checkout p, .wallet-result p { margin: .4rem 0; }.wallet-checkout small { display: block; margin-top: .3rem; color: theme('colors.vendaly.muted'); }

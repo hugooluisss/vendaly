@@ -63,7 +63,7 @@ final class OrderHistoryTest extends TestCase
         $request = (new ServerRequest(queryParams: ['from' => '2026-09-01', 'to' => '2026-09-30']))->withAttribute('user_id', 7);
         $response = (new \App\Web\Orders\OrderController(new OrderService($this->createMock(BusinessRepositoryInterface::class), $this->createMock(ProductRepositoryInterface::class), $repository, new BusinessMemberGuard($businesses)), new ResponseFactory(), new StreamFactory(), $route))->list($request);
         self::assertSame(200, $response->getStatusCode());
-        self::assertSame(['orders' => [['id' => 4, 'created_at' => '2026-09-10T12:00:00+00:00', 'customer_note' => null, 'customer_phone' => null, 'total' => '25.00', 'items' => [['name' => 'Burger', 'quantity' => 2, 'note' => 'No onions']]]], 'count' => 1], json_decode((string) $response->getBody(), true));
+        self::assertSame(['orders' => [['id' => 4, 'created_at' => '2026-09-10T12:00:00+00:00', 'customer_note' => null, 'customer_phone' => null, 'total' => '25.00', 'wallet_credited' => null, 'wallet_redeemed' => null, 'fulfillment_method_snapshot' => null, 'fulfillment_fee_snapshot' => null, 'items' => [['name' => 'Burger', 'quantity' => 2, 'note' => 'No onions']]]], 'count' => 1], json_decode((string) $response->getBody(), true));
     }
 }
 
@@ -127,7 +127,7 @@ final class HistoryOrders implements OrderRepositoryInterface
     {
         return $entity;
     }
-    public function createWithItems(Order $entity, array $items, array $options = [], ?string $phone = null): Order
+    public function createWithItems(Order $entity, array $items, array $options = [], ?string $phone = null, string $walletCredit = '0.00', string $walletRedemption = '0.00'): Order
     {
         return $entity;
     }

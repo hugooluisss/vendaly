@@ -62,10 +62,10 @@ final class CycleBusinessRepository extends CycleRepository implements BusinessM
             $query = $query->where('category', '=', $category);
         }
         if ($location !== null && $location !== '') {
-            $query = $query->where('location', 'ILIKE', '%' . $location . '%');
+            $query = $query->where('location', 'LIKE', '%' . $location . '%');
         }
         if ($name !== null && $name !== '') {
-            $query = $query->where('name', 'ILIKE', '%' . $name . '%');
+            $query = $query->where('name', 'LIKE', '%' . $name . '%');
         }
         if ($latitude !== null && $longitude !== null) {
             $query = $query

@@ -1,0 +1,50 @@
+<app-modal title="Estados de pedidos" size="lg" (close)="close.emit()">
+  <div class="order-status-form">
+    <p class="form-title">{{ editingStatus ? 'Editar estado' : 'Nuevo estado' }}</p>
+    <div class="form-row">
+      <input class="field-input" [(ngModel)]="orderStatusInput" placeholder="Ej. En camino" aria-label="Nombre del estado">
+      <label class="color-field">Color <input type="color" [(ngModel)]="orderStatusColor" aria-label="Color del estado"></label>
+    </div>
+    <div class="form-row form-row-actions">
+      <div class="form-checks">
+        <label class="inline-check"><input type="checkbox" class="field-checkbox" [(ngModel)]="orderStatusTerminal"> Terminal</label>
+        <label class="inline-check"><input type="checkbox" class="field-checkbox" [(ngModel)]="orderStatusReversesWallet"> Reversa monedero</label>
+      </div>
+      <div class="form-buttons">
+        @if (editingStatus) {
+          <button type="button" class="btn btn-secondary" (click)="cancelEdit()">Cancelar</button>
+        }
+        <button type="button" class="btn btn-primary" (click)="submit()">{{ editingStatus ? 'Guardar' : 'Agregar' }}</button>
+      </div>
+    </div>
+  </div>
+
+  <table class="order-status-table">
+    <thead>
+      <tr><th>Nombre</th><th>Color</th><th>Terminal</th><th>Predeterminado</th><th>Acciones</th></tr>
+    </thead>
+    <tbody>
+      @for (status of orderStatuses; track status.id) {
+        <tr [class.editing]="editingStatus?.id === status.id">
+          <td>{{ status.name }}</td>
+          <td><span class="color-swatch" [style.background-color]="status.color" [attr.aria-label]="'Color ' + status.color"></span></td>
+          <td>{{ status.is_terminal ? 'Sí' : 'No' }}</td>
+          <td>
+            @if (status.is_default) {
+              <span class="default-label">✓ Predeterminado</span>
+            } @else {
+              <button type="button" class="btn btn-secondary" (click)="setDefaultOrderStatus(status)">Hacer predeterminado</button>
+            }
+          </td>
+          <td class="order-status-actions">
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Mover arriba" [disabled]="$first" (click)="moveOrderStatus(status, -1)"><lucide-icon [img]="icons.ArrowUp" [size]="16"></lucide-icon></button>
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Mover abajo" [disabled]="$last" (click)="moveOrderStatus(status, 1)"><lucide-icon [img]="icons.ArrowDown" [size]="16"></lucide-icon></button>
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Editar estado" (click)="startEdit(status)"><lucide-icon [img]="icons.Pencil" [size]="16"></lucide-icon></button>
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Eliminar estado" [disabled]="orderStatuses.length === 1 || status.is_default" (click)="deleteOrderStatus(status)"><lucide-icon [img]="icons.Trash2" [size]="16"></lucide-icon></button>
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+  <small>Debes mantener al menos un estado y el estado predeterminado no se puede eliminar.</small>
+</app-modal>

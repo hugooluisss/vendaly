@@ -10,6 +10,7 @@ export interface Product {
   name: string;
   description?: string | null;
   price?: number | string | null;
+  wallet_amount?: number | string | null;
   is_active: boolean;
   position: number;
   image_url?: string | null;

@@ -8,8 +8,8 @@ final class BusinessGeolocation extends Migration
 {
     public function up(): void
     {
-        $this->database()->execute('ALTER TABLE businesses ADD COLUMN IF NOT EXISTS latitude DECIMAL(10,7) NULL');
-        $this->database()->execute('ALTER TABLE businesses ADD COLUMN IF NOT EXISTS longitude DECIMAL(10,7) NULL');
+        $this->database()->execute('ALTER TABLE businesses ADD COLUMN latitude DECIMAL(10,7) NULL');
+        $this->database()->execute('ALTER TABLE businesses ADD COLUMN longitude DECIMAL(10,7) NULL');
     }
 
     public function down(): void

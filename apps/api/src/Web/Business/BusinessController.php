@@ -18,14 +18,17 @@ final readonly class BusinessController
     }
     public function create(ServerRequestInterface $request): ResponseInterface
     {
-        try { return $this->json(['business' => PublicEntityMapper::business($this->service->create($this->userId($request), (string) ($this->body($request)['name'] ?? '')))], 201); }
+        try {
+            $business = $this->service->create($this->userId($request), (string) ($this->body($request)['name'] ?? ''));
+            return $this->json(['business' => PublicEntityMapper::business($business, fulfillmentMethods: $this->service->listFulfillmentMethods($this->userId($request), (int) $business->id))], 201);
+        }
         catch (DomainException $e) { return $this->error($e); }
     }
     public function me(ServerRequestInterface $request): ResponseInterface
     {
         $result = $this->service->findByOwner($this->userId($request));
         return $result === null ? $this->responses->createResponse(404) : $this->json([
-            'business' => PublicEntityMapper::business($result['business'], $this->service->listPaymentMethods($this->userId($request), (int) $result['business']->id), $this->service->listOrderStatuses($this->userId($request), (int) $result['business']->id)),
+            'business' => PublicEntityMapper::business($result['business'], $this->service->listPaymentMethods($this->userId($request), (int) $result['business']->id), $this->service->listOrderStatuses($this->userId($request), (int) $result['business']->id), $this->service->listFulfillmentMethods($this->userId($request), (int) $result['business']->id)),
             'hours' => array_map(PublicEntityMapper::hours(...), $result['hours']),
         ]);
     }
@@ -47,6 +50,26 @@ final readonly class BusinessController
     public function deletePaymentMethod(ServerRequestInterface $request): ResponseInterface
     {
         try { $this->service->deletePaymentMethod($this->userId($request), $this->id(), (int) $this->route->getArgument('methodId')); return $this->json(['result' => true]); }
+        catch (DomainException $e) { return $this->error($e); }
+    }
+    public function fulfillmentMethods(ServerRequestInterface $request): ResponseInterface
+    {
+        try { return $this->json(['fulfillment_methods' => array_map(PublicEntityMapper::fulfillmentMethod(...), $this->service->listFulfillmentMethods($this->userId($request), $this->id()))]); }
+        catch (DomainException $e) { return $this->error($e); }
+    }
+    public function createFulfillmentMethod(ServerRequestInterface $request): ResponseInterface
+    {
+        try { return $this->json(['fulfillment_method' => PublicEntityMapper::fulfillmentMethod($this->service->addFulfillmentMethod($this->userId($request), $this->id(), $this->body($request)))], 201); }
+        catch (DomainException $e) { return $this->error($e); }
+    }
+    public function updateFulfillmentMethod(ServerRequestInterface $request): ResponseInterface
+    {
+        try { return $this->json(['fulfillment_method' => PublicEntityMapper::fulfillmentMethod($this->service->updateFulfillmentMethod($this->userId($request), $this->id(), (int) $this->route->getArgument('methodId'), $this->body($request)))]); }
+        catch (DomainException $e) { return $this->error($e); }
+    }
+    public function deleteFulfillmentMethod(ServerRequestInterface $request): ResponseInterface
+    {
+        try { $this->service->deleteFulfillmentMethod($this->userId($request), $this->id(), (int) $this->route->getArgument('methodId')); return $this->json(['result' => true]); }
         catch (DomainException $e) { return $this->error($e); }
     }
     public function orderStatuses(ServerRequestInterface $request): ResponseInterface
@@ -87,7 +110,7 @@ final readonly class BusinessController
         try {
             [$contents, $type] = $this->upload($request, 'logo');
             [$cover, $coverType] = $this->upload($request, 'cover_image');
-            return $this->json(['business' => PublicEntityMapper::business($this->service->updateProfile($this->userId($request), $this->id(), $this->body($request), $contents, $type, $cover, $coverType))]);
+            return $this->json(['business' => PublicEntityMapper::business($this->service->updateProfile($this->userId($request), $this->id(), $this->body($request), $contents, $type, $cover, $coverType), fulfillmentMethods: $this->service->listFulfillmentMethods($this->userId($request), $this->id()))]);
         } catch (DomainException $e) { return $this->error($e); }
     }
     public function hours(ServerRequestInterface $request): ResponseInterface
@@ -97,7 +120,7 @@ final readonly class BusinessController
     }
     public function publish(ServerRequestInterface $request): ResponseInterface
     {
-        try { return $this->json(['business' => PublicEntityMapper::business($this->service->setPublished($this->userId($request), $this->id(), (bool) ($this->body($request)['published'] ?? true)))]); }
+        try { return $this->json(['business' => PublicEntityMapper::business($this->service->setPublished($this->userId($request), $this->id(), (bool) ($this->body($request)['published'] ?? true)), fulfillmentMethods: $this->service->listFulfillmentMethods($this->userId($request), $this->id()))]); }
         catch (DomainException $e) { return $this->error($e); }
     }
     private function body(ServerRequestInterface $request): array

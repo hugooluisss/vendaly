@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit;
 
-use App\Domain\Entity\{Business, BusinessMember, Category, Order, OrderItem, OrderItemOption, PaymentMethod, Product, User};
-use App\Infrastructure\Cycle\Repository\{CycleBusinessRepository, CycleCatalogScanRepository, CycleCategoryRepository, CycleCustomerRepository, CycleOrderRepository, CyclePaymentMethodRepository, CycleProductIngredientRepository, CycleProductOptionRepository, CycleProductRepository, CycleUserRepository};
+use App\Domain\Entity\{Business, BusinessMember, Category, FulfillmentMethod, Order, OrderItem, OrderItemOption, PaymentMethod, Product, User};
+use App\Infrastructure\Cycle\Repository\{CycleBusinessRepository, CycleCatalogScanRepository, CycleCategoryRepository, CycleCustomerRepository, CycleFulfillmentMethodRepository, CycleOrderRepository, CyclePaymentMethodRepository, CycleProductIngredientRepository, CycleProductOptionRepository, CycleProductRepository, CycleUserRepository};
 use App\Domain\Service\{BusinessMemberGuard, CategoryService, CatalogService, OrderService};
 use DomainException;
 use PHPUnit\Framework\TestCase;
@@ -53,7 +53,7 @@ final class RepositoriesTest extends TestCase
             self::assertSame(0, proc_close($process), $error);
         }
         self::assertSame($ids[0], $ids[1]);
-        $pdo = new \PDO(getenv('DATABASE_URL'), getenv('POSTGRES_USER'), getenv('POSTGRES_PASSWORD'));
+        $pdo = new \PDO(getenv('DATABASE_URL'), getenv('DB_USER'), getenv('DB_PASSWORD'));
         $query = $pdo->prepare('SELECT COUNT(*) FROM customers WHERE business_id = ? AND phone = ?');
         $query->execute([$firstBusiness->id, $concurrentPhone]);
         self::assertSame(1, (int) $query->fetchColumn());
@@ -72,9 +72,10 @@ final class RepositoriesTest extends TestCase
         $product->name = 'Taco';
         $product->createdAt = date(DATE_ATOM);
         (new CycleProductRepository())->create($product);
-        $service = new OrderService(new CycleBusinessRepository(), new CycleProductRepository(), new CycleOrderRepository());
+        $service = new OrderService(new CycleBusinessRepository(), new CycleProductRepository(), new CycleOrderRepository(), fulfillmentMethods: new CycleFulfillmentMethodRepository());
         $phone = '+5255' . random_int(10000000, 99999999);
-        $input = ['phone' => $phone, 'fulfillment_type' => 'pickup', 'items' => [['product_id' => $product->id, 'quantity' => 1]]];
+        $method = (new CycleFulfillmentMethodRepository())->findByBusinessId((int) $business->id)[0];
+        $input = ['phone' => $phone, 'fulfillment_method_id' => $method->id, 'items' => [['product_id' => $product->id, 'quantity' => 1]]];
         $first = $service->create($business->slug, $input)['order'];
         $second = $service->create($business->slug, $input)['order'];
         self::assertNotNull($first->customerId);
@@ -138,9 +139,9 @@ final class RepositoriesTest extends TestCase
         $withoutCoordinates = $this->createBusiness(true, null, $category, null);
         $repository = new CycleBusinessRepository();
         $pdo = new \PDO(
-            getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly',
-            getenv('POSTGRES_USER') ?: 'vendaly',
-            getenv('POSTGRES_PASSWORD') ?: 'vendaly',
+            getenv('DATABASE_URL') ?: 'mysql:host=host.docker.internal;port=3306;dbname=dev_vendaly',
+            getenv('DB_USER') ?: 'vendaly_app',
+            getenv('DB_PASSWORD') ?: '',
         );
         $statement = $pdo->prepare('UPDATE businesses SET latitude = :latitude, longitude = :longitude WHERE id = :id');
         $statement->execute(['latitude' => $near->latitude, 'longitude' => $near->longitude, 'id' => $near->id]);
@@ -165,9 +166,9 @@ final class RepositoriesTest extends TestCase
         $unpublished = $this->createNamedBusiness($term . ' Hidden', false, 'cafe');
 
         $pdo = new \PDO(
-            getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly',
-            getenv('POSTGRES_USER') ?: 'vendaly',
-            getenv('POSTGRES_PASSWORD') ?: 'vendaly',
+            getenv('DATABASE_URL') ?: 'mysql:host=host.docker.internal;port=3306;dbname=dev_vendaly',
+            getenv('DB_USER') ?: 'vendaly_app',
+            getenv('DB_PASSWORD') ?: '',
         );
         $statement = $pdo->prepare('UPDATE businesses SET latitude = :latitude, longitude = :longitude WHERE id = :id');
         $statement->execute(['latitude' => 19.4326, 'longitude' => -99.1332, 'id' => $near->id]);
@@ -280,9 +281,9 @@ final class RepositoriesTest extends TestCase
 
     public function testMigrationBackfillLeavesOrdersNumberedAndStatused(): void
     {
-        $pdo = new \PDO(getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly', getenv('POSTGRES_USER') ?: 'vendaly', getenv('POSTGRES_PASSWORD') ?: 'vendaly');
+        $pdo = new \PDO(getenv('DATABASE_URL') ?: 'mysql:host=host.docker.internal;port=3306;dbname=dev_vendaly', getenv('DB_USER') ?: 'vendaly_app', getenv('DB_PASSWORD') ?: '');
         self::assertSame(0, (int) $pdo->query('SELECT count(*) FROM orders WHERE order_number IS NULL OR status_id IS NULL')->fetchColumn());
-        self::assertSame(0, (int) $pdo->query("SELECT count(*) FROM businesses b WHERE EXISTS (SELECT 1 FROM orders o WHERE o.business_id = b.id) AND EXISTS (SELECT 1 FROM (VALUES ('Creado'), ('Elaborando'), ('Entregado'), ('Cancelado')) v(name) WHERE NOT EXISTS (SELECT 1 FROM order_statuses s WHERE s.business_id = b.id AND s.name = v.name))")->fetchColumn());
+        self::assertSame(0, (int) $pdo->query("SELECT count(*) FROM businesses b WHERE EXISTS (SELECT 1 FROM orders o WHERE o.business_id = b.id) AND EXISTS (SELECT 1 FROM (SELECT 'recibido' AS name UNION ALL SELECT 'confirmado' UNION ALL SELECT 'preparando' UNION ALL SELECT 'entregado' UNION ALL SELECT 'terminado' UNION ALL SELECT 'cancelado') v WHERE NOT EXISTS (SELECT 1 FROM order_statuses s WHERE s.business_id = b.id AND s.name = v.name))")->fetchColumn());
     }
 
     public function testOrderItemOptionsArePersistedAsSnapshots(): void
@@ -294,7 +295,7 @@ final class RepositoriesTest extends TestCase
         $item = new OrderItem(); $item->productId = (int) $product->id; $item->productNameSnapshot = 'Coffee'; $item->unitPriceSnapshot = '65.00';
         $option = new OrderItemOption(); $option->optionName = 'Add-on'; $option->valueName = 'Cream'; $option->priceDeltaSnapshot = '15.00';
         (new CycleOrderRepository())->createWithItems($order, [$item], [[$option]]);
-        $pdo = new \PDO(getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly', getenv('POSTGRES_USER') ?: 'vendaly', getenv('POSTGRES_PASSWORD') ?: 'vendaly');
+        $pdo = new \PDO(getenv('DATABASE_URL') ?: 'mysql:host=host.docker.internal;port=3306;dbname=dev_vendaly', getenv('DB_USER') ?: 'vendaly_app', getenv('DB_PASSWORD') ?: '');
         $row = $pdo->query('SELECT option_name, value_name, price_delta_snapshot FROM order_item_options WHERE order_item_id = ' . (int) $item->id)->fetch(\PDO::FETCH_ASSOC);
         self::assertSame(['option_name' => 'Add-on', 'value_name' => 'Cream', 'price_delta_snapshot' => '15.00'], $row);
     }
@@ -422,7 +423,12 @@ final class RepositoriesTest extends TestCase
         $business->category = $category;
         $business->location = $location;
         $business->createdAt = date(DATE_ATOM);
-        return (new CycleBusinessRepository())->create($business);
+        $business = (new CycleBusinessRepository())->create($business);
+        $method = new FulfillmentMethod();
+        $method->businessId = (int) $business->id;
+        $method->name = 'Consumo en el local';
+        (new CycleFulfillmentMethodRepository())->create($method);
+        return $business;
     }
 
     private function createNamedBusiness(string $name, bool $published, string $category): Business
@@ -435,7 +441,12 @@ final class RepositoriesTest extends TestCase
         $business->isPublished = $published;
         $business->category = $category;
         $business->createdAt = date(DATE_ATOM);
-        return (new CycleBusinessRepository())->create($business);
+        $business = (new CycleBusinessRepository())->create($business);
+        $method = new FulfillmentMethod();
+        $method->businessId = (int) $business->id;
+        $method->name = 'Consumo en el local';
+        (new CycleFulfillmentMethodRepository())->create($method);
+        return $business;
     }
 
     private function uniqueEmail(): string
@@ -446,9 +457,9 @@ final class RepositoriesTest extends TestCase
     private function deletedAt(string $table, int $id): ?string
     {
         $pdo = new \PDO(
-            getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly',
-            getenv('POSTGRES_USER') ?: 'vendaly',
-            getenv('POSTGRES_PASSWORD') ?: 'vendaly',
+            getenv('DATABASE_URL') ?: 'mysql:host=host.docker.internal;port=3306;dbname=dev_vendaly',
+            getenv('DB_USER') ?: 'vendaly_app',
+            getenv('DB_PASSWORD') ?: '',
         );
         $statement = $pdo->prepare('SELECT deleted_at FROM ' . $table . ' WHERE id = :id');
         $statement->execute(['id' => $id]);
@@ -458,12 +469,11 @@ final class RepositoriesTest extends TestCase
     private function nextId(string $table): int
     {
         $pdo = new \PDO(
-            getenv('DATABASE_URL') ?: 'pgsql:host=postgres;port=5432;dbname=vendaly',
-            getenv('POSTGRES_USER') ?: 'vendaly',
-            getenv('POSTGRES_PASSWORD') ?: 'vendaly',
+            getenv('DATABASE_URL') ?: 'mysql:host=host.docker.internal;port=3306;dbname=dev_vendaly',
+            getenv('DB_USER') ?: 'vendaly_app',
+            getenv('DB_PASSWORD') ?: '',
         );
         $id = (int) $pdo->query('SELECT COALESCE(MAX(id), 0) + 1 FROM ' . $table)->fetchColumn();
-        $pdo->exec("SELECT setval('{$table}_id_seq', {$id}, true)");
         return $id;
     }
 }

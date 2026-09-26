@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Service;
 
-use App\Domain\Repository\{BusinessRepositoryInterface, CatalogScanRepositoryInterface, CategoryRepositoryInterface, PaymentMethodRepositoryInterface, ProductIngredientRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
+use App\Domain\Repository\{BusinessRepositoryInterface, CatalogScanRepositoryInterface, CategoryRepositoryInterface, FulfillmentMethodRepositoryInterface, PaymentMethodRepositoryInterface, ProductIngredientRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
 use DateTimeImmutable;
 
 final readonly class CatalogService
@@ -17,6 +17,7 @@ final readonly class CatalogService
         private ?ProductOptionRepositoryInterface $options = null,
         private ?PaymentMethodRepositoryInterface $paymentMethods = null,
         private ?CatalogScanRepositoryInterface $scans = null,
+        private ?FulfillmentMethodRepositoryInterface $fulfillmentMethods = null,
     ) {}
     public function publicCatalog(string $slug): ?array
     {
@@ -65,11 +66,7 @@ final readonly class CatalogService
                 'instagram_url' => $business->instagramUrl,
                 'website_url' => $business->websiteUrl,
             ],
-            'fulfillment_methods' => array_values(array_filter([
-                $business->pickupEnabled ? ['type' => 'pickup', 'fee' => $business->pickupFee] : null,
-                $business->deliveryEnabled ? ['type' => 'delivery', 'fee' => $business->deliveryFee] : null,
-                $business->dineInEnabled ? ['type' => 'dine_in', 'fee' => $business->dineInFee] : null,
-            ])),
+            'fulfillment_methods' => array_map(static fn($method): array => ['id' => $method->id, 'name' => $method->name, 'fee' => $method->fee, 'requires_address' => $method->requiresAddress], $this->fulfillmentMethods?->findByBusinessId((int) $business->id) ?? []),
             'payment_methods' => array_map(static fn($method): array => ['id' => $method->id, 'name' => $method->name], $this->paymentMethods?->findByBusinessId((int) $business->id) ?? []),
             'hours' => array_map(static fn($h) => [
                 'day_of_week' => $h->dayOfWeek,

@@ -12,10 +12,11 @@ final class CycleCustomerRepository extends CycleRepository implements CustomerR
     public function findOrCreateByPhone(int $businessId, string $phone): Customer
     {
         $database = $this->orm->getSource(Customer::class)->getDatabase();
-        $id = (int) $database->query(
-            'INSERT INTO customers (business_id, phone) VALUES (?, ?) ON CONFLICT (business_id, phone) DO UPDATE SET id = customers.id RETURNING id',
+        $database->execute(
+            'INSERT INTO customers (business_id, phone) VALUES (?, ?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)',
             [$businessId, $phone],
-        )->fetchColumn();
+        );
+        $id = (int) $database->query('SELECT LAST_INSERT_ID()')->fetchColumn();
         return $this->find(Customer::class, $id);
     }
 

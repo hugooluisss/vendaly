@@ -1,0 +1,37 @@
+<app-modal title="Métodos de pago" (close)="close.emit()">
+  <div class="payment-form">
+    <p class="form-title">{{ editingMethod ? 'Editar método' : 'Nuevo método' }}</p>
+    <div class="form-row">
+      <input class="field-input" [(ngModel)]="paymentMethodInput" placeholder="Ej. Transferencia" aria-label="Nombre del método">
+    </div>
+    <div class="form-row form-row-actions">
+      <span></span>
+      <div class="form-buttons">
+        @if (editingMethod) {
+          <button type="button" class="btn btn-secondary" (click)="cancelEdit()">Cancelar</button>
+        }
+        <button type="button" class="btn btn-primary" (click)="submit()">{{ editingMethod ? 'Guardar' : 'Agregar' }}</button>
+      </div>
+    </div>
+  </div>
+
+  <table class="payment-table">
+    <thead>
+      <tr><th>Nombre</th><th>Acciones</th></tr>
+    </thead>
+    <tbody>
+      @for (method of paymentMethods; track method.id) {
+        <tr [class.editing]="editingMethod?.id === method.id">
+          <td>{{ method.name }}</td>
+          <td class="payment-actions">
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Mover arriba" (click)="movePaymentMethod(method, -1)"><lucide-icon [img]="icons.ArrowUp" [size]="16"></lucide-icon></button>
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Mover abajo" (click)="movePaymentMethod(method, 1)"><lucide-icon [img]="icons.ArrowDown" [size]="16"></lucide-icon></button>
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Editar método" (click)="startEdit(method)"><lucide-icon [img]="icons.Pencil" [size]="16"></lucide-icon></button>
+            <button type="button" class="btn btn-secondary icon-btn" aria-label="Eliminar método" [disabled]="paymentMethods.length === 1" (click)="deletePaymentMethod(method)"><lucide-icon [img]="icons.Trash2" [size]="16"></lucide-icon></button>
+          </td>
+        </tr>
+      }
+    </tbody>
+  </table>
+  <small>Debes mantener al menos un método de pago.</small>
+</app-modal>

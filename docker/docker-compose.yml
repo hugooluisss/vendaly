@@ -15,17 +15,16 @@ services:
       APP_ENV: dev
       APP_DEBUG: 'true'
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:4300,http://localhost:4200}
-      DATABASE_URL: pgsql:host=postgres;port=5432;dbname=vendaly
-      POSTGRES_USER: vendaly
-      POSTGRES_PASSWORD: vendaly
+      DATABASE_URL: ${DATABASE_URL}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: vendaly
       S3_PUBLIC_URL: http://localhost:9000/vendaly
     ports: ["8080:80"]
     volumes: ["../apps/api:/app"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     depends_on:
-      postgres:
-        condition: service_started
       minio-init:
         condition: service_completed_successfully
   web:
@@ -37,14 +36,6 @@ services:
       WEB_SERVE_FLAGS: ${WEB_SERVE_FLAGS:-}
     ports: ["${WEB_PORT:-4200}:4200"]
     volumes: ["../apps/web:/app", "/app/node_modules"]
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: vendaly
-      POSTGRES_USER: vendaly
-      POSTGRES_PASSWORD: vendaly
-    ports: ["5432:5432"]
-    volumes: ["postgres_data:/var/lib/postgresql/data"]
   minio:
     image: quay.io/minio/minio:latest
     command: server /data --console-address ":9001"
@@ -59,5 +50,4 @@ services:
     entrypoint: /bin/sh
     command: -c "until mc alias set local http://minio:9000 minio miniosecret; do sleep 1; done; mc mb --ignore-existing local/vendaly; mc anonymous set public local/vendaly"
 volumes:
-  postgres_data:
   minio_data:

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domain\Service;
 
-use App\Domain\Entity\{Business, BusinessHours, BusinessMember, OrderStatus, PaymentMethod};
-use App\Domain\Repository\{BusinessManagementRepositoryInterface, ObjectStorageInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface};
+use App\Domain\Entity\{Business, BusinessHours, BusinessMember, FulfillmentMethod, OrderStatus, PaymentMethod};
+use App\Domain\Repository\{BusinessManagementRepositoryInterface, FulfillmentMethodRepositoryInterface, ObjectStorageInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface};
 use DomainException;
 
 final readonly class BusinessService
@@ -18,6 +18,7 @@ final readonly class BusinessService
         private ObjectStorageInterface $storage,
         private ?PaymentMethodRepositoryInterface $paymentMethods = null,
         private ?OrderStatusRepositoryInterface $orderStatuses = null,
+        private ?FulfillmentMethodRepositoryInterface $fulfillmentMethods = null,
     ) {
     }
 
@@ -37,6 +38,24 @@ final readonly class BusinessService
         $business->slug = $slug;
         $business->createdAt = date(DATE_ATOM);
         $business = $this->businesses->create($business);
+        for ($day = 0; $day <= 6; $day++) {
+            $hours = new BusinessHours();
+            $hours->businessId = (int) $business->id;
+            $hours->dayOfWeek = $day;
+            $hours->isClosed = $day === 0 || $day === 6;
+            $hours->opensAt = $hours->isClosed ? null : '09:00:00';
+            $hours->closesAt = $hours->isClosed ? null : '20:00:00';
+            $this->businesses->saveHours($hours);
+        }
+        if ($this->fulfillmentMethods !== null) {
+            $method = new FulfillmentMethod();
+            $method->businessId = (int) $business->id;
+            $method->name = 'Consumo en el local';
+            $method->requiresAddress = false;
+            $method->fee = null;
+            $method->position = 0;
+            $this->fulfillmentMethods->create($method);
+        }
         if ($this->paymentMethods !== null) {
             $method = new PaymentMethod();
             $method->businessId = (int) $business->id;
@@ -51,6 +70,7 @@ final readonly class BusinessService
                 $status->color = $defaultData['color'];
                 $status->isTerminal = $defaultData['is_terminal'];
                 $status->isDefault = $defaultData['is_default'];
+                $status->reversesWallet = $defaultData['reverses_wallet'] ?? false;
                 $status->position = $defaultData['position'];
                 $this->orderStatuses->create($status);
             }
@@ -83,6 +103,10 @@ final readonly class BusinessService
             }
             $business->name = $name;
         }
+        if (array_key_exists('wallet_enabled', $input)) {
+            if (!is_bool($input['wallet_enabled'])) throw new DomainException('Invalid wallet_enabled.');
+            $business->walletEnabled = $input['wallet_enabled'];
+        }
         if (array_key_exists('whatsapp_number', $input)) {
             $number = trim((string) $input['whatsapp_number']);
             if ($number !== '' && !PhoneNumber::isValid($number)) {
@@ -111,22 +135,6 @@ final readonly class BusinessService
         }
         if (array_key_exists('location', $input)) {
             $business->location = $input['location'] === null ? null : trim((string) $input['location']);
-        }
-        foreach (['pickup_enabled' => 'pickupEnabled', 'delivery_enabled' => 'deliveryEnabled', 'dine_in_enabled' => 'dineInEnabled'] as $field => $property) {
-            if (array_key_exists($field, $input)) {
-                $business->{$property} = is_string($input[$field]) ? filter_var($input[$field], FILTER_VALIDATE_BOOLEAN) : (bool) $input[$field];
-            }
-        }
-        foreach (['pickup_fee' => 'pickupFee', 'delivery_fee' => 'deliveryFee', 'dine_in_fee' => 'dineInFee'] as $field => $property) {
-            if (array_key_exists($field, $input)) {
-                $fee = $input[$field];
-                if ($fee === null || $fee === '') $business->{$property} = null;
-                elseif (!is_numeric($fee) || (float) $fee < 0) throw new DomainException('Invalid fulfillment fee.');
-                else $business->{$property} = number_format((float) $fee, 2, '.', '');
-            }
-        }
-        if (!$business->pickupEnabled && !$business->deliveryEnabled && !$business->dineInEnabled) {
-            throw new DomainException('At least one fulfillment method must be enabled.');
         }
         if (array_key_exists('latitude', $input) || array_key_exists('longitude', $input)) {
             $latitude = $input['latitude'] ?? null;
@@ -183,8 +191,8 @@ final readonly class BusinessService
         if ($published && !$business->isPublished && ($business->latitude === null || $business->longitude === null)) {
             throw new DomainException('Set a location on the map before publishing.');
         }
-        if ($published && !$business->pickupEnabled && !$business->deliveryEnabled && !$business->dineInEnabled) {
-            throw new DomainException('At least one fulfillment method must be enabled.');
+        if ($published && $this->fulfillmentMethods !== null && count($this->fulfillmentMethods->findByBusinessId($businessId)) === 0) {
+            throw new DomainException('At least one fulfillment method must be configured.');
         }
         if ($published && $this->paymentMethods !== null && $this->paymentMethods->findByBusinessId($businessId) === []) {
             throw new DomainException('At least one payment method must be configured.');
@@ -232,6 +240,72 @@ final readonly class BusinessService
         return null;
     }
 
+    /** @return FulfillmentMethod[] */
+    public function listFulfillmentMethods(int $userId, int $businessId): array
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        return $this->fulfillmentMethods?->findByBusinessId($businessId) ?? [];
+    }
+
+    public function addFulfillmentMethod(int $userId, int $businessId, array $input): FulfillmentMethod
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $this->requireFulfillmentMethods();
+        $method = new FulfillmentMethod();
+        $method->businessId = $businessId;
+        $method->name = trim((string) ($input['name'] ?? ''));
+        if ($method->name === '') throw new DomainException('Fulfillment method name is required.');
+        $method->fee = $this->normalizeFulfillmentFee($input['fee'] ?? null);
+        $method->requiresAddress = filter_var($input['requires_address'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $method->position = count($this->fulfillmentMethods->findByBusinessId($businessId));
+        return $this->fulfillmentMethods->create($method);
+    }
+
+    public function updateFulfillmentMethod(int $userId, int $businessId, int $id, array $input): FulfillmentMethod
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $this->requireFulfillmentMethods();
+        $method = $this->findFulfillmentMethod($businessId, $id);
+        if ($method === null) throw new DomainException('Fulfillment method not found.');
+        if (array_key_exists('name', $input)) {
+            $name = trim((string) $input['name']);
+            if ($name === '') throw new DomainException('Fulfillment method name is required.');
+            $method->name = $name;
+        }
+        if (array_key_exists('fee', $input)) $method->fee = $this->normalizeFulfillmentFee($input['fee']);
+        if (array_key_exists('requires_address', $input)) $method->requiresAddress = filter_var($input['requires_address'], FILTER_VALIDATE_BOOLEAN);
+        return $this->fulfillmentMethods->update($method);
+    }
+
+    public function deleteFulfillmentMethod(int $userId, int $businessId, int $id): void
+    {
+        $this->guard->assertOwner($userId, $businessId);
+        $this->requireFulfillmentMethods();
+        $methods = $this->fulfillmentMethods->findByBusinessId($businessId);
+        $method = $this->findFulfillmentMethod($businessId, $id);
+        if ($method === null) throw new DomainException('Fulfillment method not found.');
+        if (count($methods) < 2) throw new DomainException('At least one fulfillment method must remain.');
+        $this->fulfillmentMethods->delete($method);
+    }
+
+    private function findFulfillmentMethod(int $businessId, int $id): ?FulfillmentMethod
+    {
+        foreach ($this->fulfillmentMethods?->findByBusinessId($businessId) ?? [] as $method) if ((int) $method->id === $id) return $method;
+        return null;
+    }
+
+    private function requireFulfillmentMethods(): void
+    {
+        if ($this->fulfillmentMethods === null) throw new DomainException('Fulfillment methods are unavailable.');
+    }
+
+    private function normalizeFulfillmentFee(mixed $fee): ?string
+    {
+        if ($fee === null || $fee === '') return null;
+        if (!is_numeric($fee) || !is_finite((float) $fee) || (float) $fee < 0) throw new DomainException('Invalid fulfillment fee.');
+        return number_format((float) $fee, 2, '.', '');
+    }
+
     /** @return OrderStatus[] */
     public function listOrderStatuses(int $userId, int $businessId): array
     {
@@ -252,6 +326,7 @@ final readonly class BusinessService
         $status->name = $name;
         $status->color = $color;
         $status->isTerminal = (bool) ($input['is_terminal'] ?? false);
+        $status->reversesWallet = (bool) ($input['reverses_wallet'] ?? false);
         $status->isDefault = false;
         $status->position = count($this->orderStatuses->findByBusinessId($businessId));
         return $this->orderStatuses->create($status);
@@ -272,6 +347,7 @@ final readonly class BusinessService
             $status->color = (string) $input['color'];
         }
         if (array_key_exists('is_terminal', $input)) $status->isTerminal = (bool) $input['is_terminal'];
+        if (array_key_exists('reverses_wallet', $input)) $status->reversesWallet = (bool) $input['reverses_wallet'];
         if (array_key_exists('position', $input)) $status->position = max(0, (int) $input['position']);
         return $this->orderStatuses->update($status);
     }

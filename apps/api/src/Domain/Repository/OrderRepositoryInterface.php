@@ -10,7 +10,7 @@ interface OrderRepositoryInterface
 {
     public function create(Order $entity): Order;
     /** @param OrderItem[] $items @param array<int, \App\Domain\Entity\OrderItemOption[]> $options */
-    public function createWithItems(Order $entity, array $items, array $options = [], ?string $phone = null): Order;
+    public function createWithItems(Order $entity, array $items, array $options = [], ?string $phone = null, string $walletCredit = '0.00', string $walletRedemption = '0.00'): Order;
     public function createItem(OrderItem $entity): OrderItem;
     public function findById(int $id): ?Order;
     /** @return list<array{order: Order, items: OrderItem[]}> */

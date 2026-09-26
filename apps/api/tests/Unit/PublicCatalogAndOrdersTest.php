@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit;
 
-use App\Domain\Entity\{Business, Category, Order, OrderItem, OrderItemOption, OrderStatus, PaymentMethod, Product, ProductOption, ProductOptionValue};
-use App\Domain\Repository\{BusinessRepositoryInterface, CatalogScanRepositoryInterface, CategoryRepositoryInterface, OrderRepositoryInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface};
+use App\Domain\Entity\{Business, Category, FulfillmentMethod, Order, OrderItem, OrderItemOption, OrderStatus, PaymentMethod, Product, ProductOption, ProductOptionValue, WalletTransaction};
+use App\Domain\Repository\{BusinessRepositoryInterface, CatalogScanRepositoryInterface, CategoryRepositoryInterface, FulfillmentMethodRepositoryInterface, OrderRepositoryInterface, OrderStatusRepositoryInterface, PaymentMethodRepositoryInterface, ProductOptionRepositoryInterface, ProductRepositoryInterface, WalletRepositoryInterface};
 use App\Domain\Service\{CatalogService, OrderService, WhatsAppOrderLink};
 use DomainException;
 use PHPUnit\Framework\TestCase;
@@ -31,8 +31,8 @@ final class PublicCatalogAndOrdersTest extends TestCase
     public function testOrderRequiresValidPhoneBeforePersistence(): void
     {
         $orders = new FakeOrders();
-        $service = new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Taco')]), $orders);
-        $input = ['fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 1]]];
+        $service = new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Taco')]), $orders, fulfillmentMethods: $this->defaultFulfillments());
+        $input = ['fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 1]]];
         foreach ([$input, $input + ['phone' => 'bad-number']] as $invalid) {
             try {
                 $service->create('shop', $invalid);
@@ -49,8 +49,44 @@ final class PublicCatalogAndOrdersTest extends TestCase
     public function testOrderCreationAssignsCurrentDefaultStatus(): void
     {
         $status = new OrderStatus(); $status->id = 9; $status->businessId = 1; $status->name = 'Elaborando'; $status->isDefault = true;
-        $order = (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Taco')]), new FakeOrders(), null, null, null, new PublicOrderStatuses([$status])))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 1]]])['order'];
+        $order = (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Taco')]), new FakeOrders(), null, null, null, new PublicOrderStatuses([$status]), fulfillmentMethods: $this->defaultFulfillments()))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 1]]])['order'];
         self::assertSame(9, $order->statusId);
+    }
+
+    public function testWalletAccrualAndWhatsAppWalletLines(): void
+    {
+        $business = $this->business(true); $business->walletEnabled = true;
+        $a = $this->product(10, true, 'A', '10'); $a->walletAmount = '5.00';
+        $b = $this->product(11, true, 'B', '10'); $b->walletAmount = '10.00';
+        $ledger = new FakeWallet();
+        $orders = new FakeOrders(); $orders->wallet = $ledger;
+        $service = new OrderService(new FakeBusinesses($business), new FakeProducts([$a, $b]), $orders, fulfillmentMethods: $this->defaultFulfillments(), wallet: $ledger);
+        $data = $service->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 2], ['product_id' => 11, 'quantity' => 1]]]);
+        self::assertSame('20.00', $data['wallet_credited']);
+        self::assertSame('20.00', $data['wallet_balance']);
+        self::assertSame('20.00', $ledger->balanceForCustomer(1));
+        self::assertStringContainsString('Saldo acreditado: 20.00', rawurldecode((string) parse_url(WhatsAppOrderLink::generate($data['order'], $data['items'], $data['whatsapp_number'], true, '20.00', '0.00', '20.00'), PHP_URL_QUERY)));
+        self::assertStringNotContainsString('Saldo acreditado', rawurldecode((string) parse_url(WhatsAppOrderLink::generate($data['order'], $data['items'], $data['whatsapp_number']), PHP_URL_QUERY)));
+    }
+
+    public function testWalletRedemptionValidationAndAdjustedOrderTotal(): void
+    {
+        $business = $this->business(true); $business->walletEnabled = true;
+        $product = $this->product(10, true, 'Taco', '100');
+        $ledger = new FakeWallet('40.00');
+        $customers = new class implements \App\Domain\Repository\CustomerRepositoryInterface { public function findOrCreateByPhone(int $businessId, string $phone): \App\Domain\Entity\Customer { $c = new \App\Domain\Entity\Customer(); $c->id = 1; return $c; } public function findByIdsForBusiness(int $businessId, array $ids): array { return []; } };
+        $orders = new FakeOrders(); $orders->wallet = $ledger;
+        $service = new OrderService(new FakeBusinesses($business), new FakeProducts([$product]), $orders, customers: $customers, fulfillmentMethods: $this->defaultFulfillments(), wallet: $ledger);
+        $data = $service->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'wallet_redemption' => 15, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+        self::assertSame('85.00', $data['order']->total);
+        self::assertSame('15.00', $data['wallet_redeemed']);
+        self::assertSame('25.00', $data['wallet_balance']);
+        foreach ([['wallet_redemption' => 41, 'message' => 'available balance'], ['wallet_redemption' => 101, 'message' => 'available balance']] as $case) {
+            try {
+                $service->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'wallet_redemption' => $case['wallet_redemption'], 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+                self::fail('Expected redemption rejection.');
+            } catch (\DomainException $e) { self::assertStringContainsString($case['message'], $e->getMessage()); }
+        }
     }
 
     public function testPublishedCatalogOnlyReturnsActiveProducts(): void
@@ -75,9 +111,9 @@ final class PublicCatalogAndOrdersTest extends TestCase
     {
         $product = $this->product(10, true, 'Deleted');
         $product->deletedAt = date(DATE_ATOM);
-        $service = new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$product]), new FakeOrders());
+        $service = new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$product]), new FakeOrders(), fulfillmentMethods: $this->defaultFulfillments());
         $this->expectException(DomainException::class);
-        $service->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+        $service->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
     }
 
     public function testUnknownAndUnpublishedCatalogsReturnNothing(): void
@@ -143,20 +179,20 @@ final class PublicCatalogAndOrdersTest extends TestCase
         $free = $this->product(11, true, 'Service');
         $orders = new FakeOrders();
         $products = new FakeProducts([$priced, $free]);
-        $service = new OrderService(new FakeBusinesses($b), $products, $orders);
-        $saved = $service->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 2], ['product_id' => 11, 'quantity' => 1, 'note' => 'No onions']]]);
+        $service = new OrderService(new FakeBusinesses($b), $products, $orders, fulfillmentMethods: $this->defaultFulfillments());
+        $saved = $service->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 2], ['product_id' => 11, 'quantity' => 1, 'note' => 'No onions']]]);
         self::assertSame('25.00', $saved['order']->total);
         self::assertSame('Changed later', $saved['items'][0]->productNameSnapshot);
         self::assertNull($saved['items'][1]->unitPriceSnapshot);
         self::assertSame(1, $products->bulkLoads);
         try {
-            $service->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => []]);
+            $service->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => []]);
             self::fail();
         } catch (DomainException) {
             self::assertCount(1, $orders->orders);
         }
         try {
-            (new OrderService(new FakeBusinesses($this->business(false)), new FakeProducts([$priced]), new FakeOrders()))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+            (new OrderService(new FakeBusinesses($this->business(false)), new FakeProducts([$priced]), new FakeOrders(), fulfillmentMethods: $this->defaultFulfillments()))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
             self::fail();
         } catch (DomainException) {
             self::assertTrue(true);
@@ -167,8 +203,8 @@ final class PublicCatalogAndOrdersTest extends TestCase
     {
         $orders = new FakeOrders(true);
         try {
-            (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Burger')]), $orders))
-                ->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+            (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Burger')]), $orders, fulfillmentMethods: $this->defaultFulfillments()))
+                ->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
             self::fail('Expected persistence failure.');
         } catch (\RuntimeException) {
             self::assertCount(0, $orders->orders);
@@ -181,18 +217,18 @@ final class PublicCatalogAndOrdersTest extends TestCase
         $option = $this->option('Add-ons', 'multiple', false, [['Cream', '15']]);
         $options = new CatalogOptions([10 => [$option]]);
         $orders = new FakeOrders();
-        $saved = (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Coffee', '50')]), $orders, null, $options))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 2, 'option_value_ids' => [101]]]]);
+        $saved = (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Coffee', '50')]), $orders, null, $options, fulfillmentMethods: $this->defaultFulfillments()))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 2, 'option_value_ids' => [101]]]]);
         self::assertSame('130.00', $saved['order']->total);
         self::assertSame('65.00', $saved['items'][0]->unitPriceSnapshot);
         self::assertSame('Cream', $saved['items'][0]->options[0]->valueName);
         $this->expectException(DomainException::class);
-        (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Coffee', '50')]), new FakeOrders(), null, $options))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 1, 'option_value_ids' => [999]]]]);
+        (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Coffee', '50')]), new FakeOrders(), null, $options, fulfillmentMethods: $this->defaultFulfillments()))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 1, 'option_value_ids' => [999]]]]);
     }
 
     public function testOrderRejectsMissingRequiredAndExtraSingleOption(): void
     {
         $options = new CatalogOptions([10 => [$this->option('Sugar', 'single', true, [['Brown', '0'], ['White', '0']])]]);
-        $make = fn(array $ids) => (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Coffee', '50')]), new FakeOrders(), null, $options))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'pickup', 'items' => [['product_id' => 10, 'quantity' => 1, 'option_value_ids' => $ids]]]);
+        $make = fn(array $ids) => (new OrderService(new FakeBusinesses($this->business(true)), new FakeProducts([$this->product(10, true, 'Coffee', '50')]), new FakeOrders(), null, $options, fulfillmentMethods: $this->defaultFulfillments()))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 1, 'items' => [['product_id' => 10, 'quantity' => 1, 'option_value_ids' => $ids]]]);
         try {
             $make([]);
             self::fail();
@@ -244,21 +280,28 @@ final class PublicCatalogAndOrdersTest extends TestCase
     public function testCatalogAndOrdersUseFulfillmentMethodsAndDeliveryDetails(): void
     {
         $business = $this->business(true);
-        $business->pickupEnabled = false;
-        $business->deliveryEnabled = true;
-        $business->dineInEnabled = true;
+        $delivery = $this->fulfillment(2, 'Envío a domicilio', true);
+        $dineIn = $this->fulfillment(3, 'Consumo en el local');
+        $methods = new PublicFulfillmentMethods([$delivery, $dineIn]);
         $category = new Category();
         $category->id = 4;
-        $catalog = (new CatalogService(new FakeBusinesses($business), new FakeCategories([$category]), new FakeProducts([$this->product(10, true, 'Taco')])))->publicCatalog('shop');
-        self::assertSame([['type' => 'delivery', 'fee' => null], ['type' => 'dine_in', 'fee' => null]], $catalog['fulfillment_methods']);
+        $catalog = (new CatalogService(new FakeBusinesses($business), new FakeCategories([$category]), new FakeProducts([$this->product(10, true, 'Taco')]), fulfillmentMethods: $methods))->publicCatalog('shop');
+        self::assertSame([
+            ['id' => 2, 'name' => 'Envío a domicilio', 'fee' => null, 'requires_address' => true],
+            ['id' => 3, 'name' => 'Consumo en el local', 'fee' => null, 'requires_address' => false],
+        ], $catalog['fulfillment_methods']);
         $orders = new FakeOrders();
-        $saved = (new OrderService(new FakeBusinesses($business), new FakeProducts([$this->product(10, true, 'Taco')]), $orders))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'delivery', 'delivery_latitude' => 19.4, 'delivery_longitude' => -99.1, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
-        self::assertSame('delivery', $saved['order']->fulfillmentType);
+        $saved = (new OrderService(new FakeBusinesses($business), new FakeProducts([$this->product(10, true, 'Taco')]), $orders, fulfillmentMethods: $methods))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 2, 'delivery_latitude' => 19.4, 'delivery_longitude' => -99.1, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+        self::assertSame(2, $saved['order']->fulfillmentMethodId);
+        self::assertSame('Envío a domicilio', $saved['order']->fulfillmentMethodSnapshot);
         self::assertSame(19.4, $saved['order']->deliveryLatitude);
-        self::assertStringContainsString(rawurlencode("Entrega a domicilio\nMapa: https://www.google.com/maps?q=19.4,-99.1"), WhatsAppOrderLink::generate($saved['order'], $saved['items'], $business->whatsappNumber));
-        foreach ([['phone' => '+525512345678', 'fulfillment_type' => 'delivery'], ['phone' => '+525512345678', 'fulfillment_type' => 'pickup'], ['phone' => '+525512345678', 'fulfillment_type' => 'unknown'], []] as $input) {
+        self::assertStringContainsString(rawurlencode("Envío a domicilio\nMapa: https://www.google.com/maps?q=19.4,-99.1"), WhatsAppOrderLink::generate($saved['order'], $saved['items'], $business->whatsappNumber));
+        $delivery->name = 'Renamed after order';
+        self::assertSame('Envío a domicilio', $saved['order']->fulfillmentMethodSnapshot);
+        self::assertStringContainsString(rawurlencode('Envío a domicilio'), WhatsAppOrderLink::generate($saved['order'], $saved['items'], $business->whatsappNumber));
+        foreach ([['phone' => '+525512345678'], ['phone' => '+525512345678', 'fulfillment_method_id' => 999], []] as $input) {
             try {
-                (new OrderService(new FakeBusinesses($business), new FakeProducts([$this->product(10, true, 'Taco')]), new FakeOrders()))->create('shop', $input + ['items' => [['product_id' => 10, 'quantity' => 1]]]);
+                (new OrderService(new FakeBusinesses($business), new FakeProducts([$this->product(10, true, 'Taco')]), new FakeOrders(), fulfillmentMethods: $methods))->create('shop', $input + ['items' => [['product_id' => 10, 'quantity' => 1]]]);
                 self::fail('Expected fulfillment validation.');
             } catch (DomainException) {
                 self::assertTrue(true);
@@ -269,24 +312,36 @@ final class PublicCatalogAndOrdersTest extends TestCase
     public function testDeliveryAcceptsAddressOnlyAndWhatsAppListsEveryMethod(): void
     {
         $business = $this->business(true);
-        $business->deliveryEnabled = $business->dineInEnabled = true;
+        $delivery = $this->fulfillment(2, 'Envío', true);
+        $dineIn = $this->fulfillment(3, 'En el local');
+        $methods = new PublicFulfillmentMethods([$this->fulfillment(1, 'Recolección'), $delivery, $dineIn]);
         $product = $this->product(10, true, 'Taco');
-        $addressOrder = (new OrderService(new FakeBusinesses($business), new FakeProducts([$product]), new FakeOrders()))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'delivery', 'delivery_address' => 'Calle Roma 1', 'items' => [['product_id' => 10, 'quantity' => 1]]])['order'];
+        try {
+            (new OrderService(new FakeBusinesses($business), new FakeProducts([$product]), new FakeOrders(), fulfillmentMethods: $methods))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 2, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+            self::fail('Address requiring methods need an address or complete coordinates.');
+        } catch (DomainException $exception) {
+            self::assertSame('Delivery requires an address or complete coordinates.', $exception->getMessage());
+        }
+        $pinOrder = (new OrderService(new FakeBusinesses($business), new FakeProducts([$product]), new FakeOrders(), fulfillmentMethods: $methods))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 2, 'delivery_latitude' => 19.4, 'delivery_longitude' => -99.1, 'items' => [['product_id' => 10, 'quantity' => 1]]])['order'];
+        self::assertSame(19.4, $pinOrder->deliveryLatitude);
+        $addressOrder = (new OrderService(new FakeBusinesses($business), new FakeProducts([$product]), new FakeOrders(), fulfillmentMethods: $methods))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 2, 'delivery_address' => 'Calle Roma 1', 'items' => [['product_id' => 10, 'quantity' => 1]]])['order'];
         self::assertSame('Calle Roma 1', $addressOrder->deliveryAddress);
-        self::assertStringContainsString(rawurlencode("Entrega a domicilio\nDirección: Calle Roma 1"), WhatsAppOrderLink::generate($addressOrder, [], $business->whatsappNumber));
-        foreach (['pickup' => 'Recolección en tienda', 'dine_in' => 'Consumo en el local'] as $method => $label) {
+        self::assertStringContainsString(rawurlencode("Envío\nDirección: Calle Roma 1"), WhatsAppOrderLink::generate($addressOrder, [], $business->whatsappNumber));
+        foreach (['Recolección', $dineIn->name] as $label) {
             $order = new Order();
-            $order->fulfillmentType = $method;
+            $order->fulfillmentMethodSnapshot = $label;
             self::assertStringContainsString(rawurlencode($label), WhatsAppOrderLink::generate($order, [], $business->whatsappNumber));
         }
     }
 
     public function testPaymentMethodValidationFeeSnapshotAndWhatsAppBreakdown(): void
     {
-        $business = $this->business(true); $business->deliveryEnabled = true; $business->deliveryFee = '30.00';
+        $business = $this->business(true);
+        $delivery = $this->fulfillment(2, 'Entrega local', true, '30.00');
+        $fulfillments = new PublicFulfillmentMethods([$delivery]);
         $method = new PaymentMethod(); $method->id = 8; $method->businessId = 1; $method->name = 'Transferencia';
         $orders = new FakeOrders();
-        $saved = (new OrderService(new FakeBusinesses($business), new FakeProducts([$this->product(10, true, 'Taco', '100')]), $orders, null, null, new PublicPaymentMethods([$method])))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'delivery', 'delivery_address' => 'Centro 1', 'payment_method_id' => 8, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+        $saved = (new OrderService(new FakeBusinesses($business), new FakeProducts([$this->product(10, true, 'Taco', '100')]), $orders, null, null, new PublicPaymentMethods([$method]), fulfillmentMethods: $fulfillments))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 2, 'delivery_address' => 'Centro 1', 'payment_method_id' => 8, 'items' => [['product_id' => 10, 'quantity' => 1]]]);
         self::assertSame('130.00', $saved['order']->total);
         self::assertSame('30.00', $saved['order']->fulfillmentFeeSnapshot);
         self::assertSame('Transferencia', $saved['order']->paymentMethodSnapshot);
@@ -295,14 +350,15 @@ final class PublicCatalogAndOrdersTest extends TestCase
         self::assertStringContainsString('Costo de entrega: 30.00', $message);
         self::assertStringContainsString('Método de pago: Transferencia', $message);
         $this->expectException(DomainException::class);
-        (new OrderService(new FakeBusinesses($business), new FakeProducts([$this->product(10, true, 'Taco')]), new FakeOrders(), null, null, new PublicPaymentMethods([$method])))->create('shop', ['phone' => '+525512345678', 'fulfillment_type' => 'delivery', 'delivery_address' => 'Centro 1', 'items' => [['product_id' => 10, 'quantity' => 1]]]);
+        (new OrderService(new FakeBusinesses($business), new FakeProducts([$this->product(10, true, 'Taco')]), new FakeOrders(), null, null, new PublicPaymentMethods([$method]), fulfillmentMethods: $fulfillments))->create('shop', ['phone' => '+525512345678', 'fulfillment_method_id' => 2, 'delivery_address' => 'Centro 1', 'items' => [['product_id' => 10, 'quantity' => 1]]]);
     }
 
     public function testCatalogIncludesFulfillmentFeesAndPaymentMethods(): void
     {
-        $business = $this->business(true); $business->pickupFee = '5.00';
+        $business = $this->business(true);
+        $pickup = $this->fulfillment(1, 'Recolección', false, '5.00');
         $method = new PaymentMethod(); $method->id = 3; $method->name = 'Efectivo'; $method->position = 0;
-        $catalog = (new CatalogService(new FakeBusinesses($business), new FakeCategories(), new FakeProducts(), null, null, new PublicPaymentMethods([$method])))->publicCatalog('shop');
+        $catalog = (new CatalogService(new FakeBusinesses($business), new FakeCategories(), new FakeProducts(), paymentMethods: new PublicPaymentMethods([$method]), fulfillmentMethods: new PublicFulfillmentMethods([$pickup])))->publicCatalog('shop');
         self::assertSame('5.00', $catalog['fulfillment_methods'][0]['fee']);
         self::assertSame([['id' => 3, 'name' => 'Efectivo']], $catalog['payment_methods']);
     }
@@ -316,6 +372,11 @@ final class PublicCatalogAndOrdersTest extends TestCase
         $b->isPublished = $published;
         $b->whatsappNumber = '+525512345678';
         return $b;
+    }
+    private function defaultFulfillments(): PublicFulfillmentMethods { return new PublicFulfillmentMethods([$this->fulfillment(1, 'Consumo en el local')]); }
+    private function fulfillment(int $id, string $name, bool $requiresAddress = false, ?string $fee = null): FulfillmentMethod
+    {
+        $method = new FulfillmentMethod(); $method->id = $id; $method->businessId = 1; $method->name = $name; $method->requiresAddress = $requiresAddress; $method->fee = $fee; $method->position = $id - 1; return $method;
     }
     private function product(int $id, bool $active, string $name, ?string $price = null): Product
     {
@@ -399,14 +460,16 @@ final class FakeOrders implements OrderRepositoryInterface
 {
     public array $orders = [];
     public array $items = [];
+    public ?FakeWallet $wallet = null;
     public function __construct(private bool $fail = false) {} public function create(Order $entity): Order
     {
         $entity->id = count($this->orders) + 1;
         $this->orders[] = $entity;
         return $entity;
-    } public function createWithItems(Order $entity, array $items, array $options = [], ?string $phone = null): Order
+    } public function createWithItems(Order $entity, array $items, array $options = [], ?string $phone = null, string $walletCredit = '0.00', string $walletRedemption = '0.00'): Order
     {
         $entity->id = 1;
+        $entity->customerId = 1;
         $this->orders[] = $entity;
         foreach ($items as $index => $item) {
             if ($this->fail && $index === 0) {
@@ -414,7 +477,10 @@ final class FakeOrders implements OrderRepositoryInterface
                 $this->items = [];
                 throw new \RuntimeException('forced failure');
             } $this->items[] = $item;
-        } return $entity;
+        }
+        if ((float) $walletCredit > 0) $this->wallet?->postTransaction(1, (int) $entity->id, 'credit', $walletCredit);
+        if ((float) $walletRedemption > 0) $this->wallet?->postTransaction(1, (int) $entity->id, 'debit', number_format(-abs((float) $walletRedemption), 2, '.', ''));
+        return $entity;
     } public function createItem(OrderItem $entity): OrderItem
     {
         $this->items[] = $entity;
@@ -429,6 +495,20 @@ final class FakeOrders implements OrderRepositoryInterface
     {
         return $this->items;
     }
+}
+final class FakeWallet implements WalletRepositoryInterface
+{
+    public array $transactions = [];
+    public function __construct(private string $balance = '0.00') {}
+    public function balanceForCustomer(int $customerId): string
+    {
+        $sum = (float) $this->balance;
+        foreach ($this->transactions as $transaction) if ($transaction->customerId === $customerId) $sum += (float) $transaction->amount;
+        return number_format($sum, 2, '.', '');
+    }
+    public function postTransaction(int $customerId, ?int $orderId, string $type, string $amount): WalletTransaction { $t = new WalletTransaction(); $t->id = count($this->transactions) + 1; $t->customerId = $customerId; $t->orderId = $orderId; $t->type = $type; $t->amount = $amount; $this->transactions[] = $t; return $t; }
+    public function hasReversalForOrder(int $orderId): bool { foreach ($this->transactions as $t) if ($t->orderId === $orderId && $t->type === 'reversal') return true; return false; }
+    public function originalTransactionsForOrder(int $orderId): array { return array_values(array_filter($this->transactions, static fn(WalletTransaction $t) => $t->orderId === $orderId && in_array($t->type, ['credit', 'debit'], true))); }
 }
 final class CatalogIngredients implements \App\Domain\Repository\ProductIngredientRepositoryInterface
 {
@@ -469,4 +549,12 @@ final class PublicPaymentMethods implements PaymentMethodRepositoryInterface
     public function create(PaymentMethod $method): PaymentMethod { return $method; }
     public function update(PaymentMethod $method): PaymentMethod { return $method; }
     public function delete(PaymentMethod $method): void {}
+}
+final class PublicFulfillmentMethods implements FulfillmentMethodRepositoryInterface
+{
+    public function __construct(private array $items = []) {}
+    public function findByBusinessId(int $businessId): array { return array_values(array_filter($this->items, static fn(FulfillmentMethod $method): bool => $method->businessId === $businessId)); }
+    public function create(FulfillmentMethod $method): FulfillmentMethod { return $method; }
+    public function update(FulfillmentMethod $method): FulfillmentMethod { return $method; }
+    public function delete(FulfillmentMethod $method): void {}
 }

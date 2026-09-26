@@ -17,6 +17,8 @@ export interface Order {
   status: OrderStatus;
   customer_phone?: string | null;
   customer_note?: string | null;
+  fulfillment_method_snapshot?: string | null;
+  fulfillment_fee_snapshot?: number | string | null;
   total?: number | string | null;
   items: OrderItem[];
 }
