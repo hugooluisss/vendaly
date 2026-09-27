@@ -1,8 +1,9 @@
 import { AsyncPipe, CurrencyPipe } from '@angular/common';
 import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { catchError, of, shareReplay } from 'rxjs';
+import { catchError, firstValueFrom, of, shareReplay } from 'rxjs';
 import { ModalComponent } from '../../shared/modal/modal.component';
+import { NotificationService } from '../../shared/notification.service';
 import { CartService } from '../cart.service';
 import { CatalogApiService } from '../catalog-api.service';
 import { PublicProduct } from '../public.models';
@@ -12,6 +13,7 @@ export class CatalogPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly catalogApi = inject(CatalogApiService);
+  private readonly notification = inject(NotificationService);
   readonly cart = inject(CartService);
   readonly slug = this.route.snapshot.paramMap.get('slug') ?? '';
   readonly catalog$ = this.catalogApi.get(this.slug).pipe(catchError(() => of(null)), shareReplay(1));
@@ -28,6 +30,26 @@ export class CatalogPageComponent {
   selectCategory(categoryId: number): void { this.activeCategory = categoryId; }
   whatsappLink(number: string): string { return 'https://wa.me/' + number.replace(/\D+/g, ''); }
   openOrder(): void { this.router.navigate(['/public/catalog', this.slug, 'order']); }
+  async share(): Promise<void> {
+    const url = window.location.origin + window.location.pathname;
+    if (typeof navigator.share === 'function') {
+      try {
+        const catalog = await firstValueFrom(this.catalog$);
+        if (!catalog) return;
+        await navigator.share({ title: catalog.business.name, url });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      this.notification.success('Enlace copiado');
+    } catch {
+      // Clipboard access can be unavailable in insecure contexts or embedded browsers.
+    }
+  }
   addProduct(product: PublicProduct): void { if (product.options?.length) { this.pendingProduct = product; this.selections.set(product.id, []); } else this.cart.add(product); }
   confirmAdd(): void { if (this.pendingProduct && this.canAdd(this.pendingProduct)) { this.cart.add(this.pendingProduct, this.selected(this.pendingProduct)); this.closeModal(); } }
   closeModal(): void { if (this.pendingProduct) this.selections.delete(this.pendingProduct.id); this.pendingProduct = null; }

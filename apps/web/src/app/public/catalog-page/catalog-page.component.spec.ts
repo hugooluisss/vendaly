@@ -4,10 +4,68 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { CatalogApiService } from '../catalog-api.service';
 import { CartService } from '../cart.service';
+import { NotificationService } from '../../shared/notification.service';
 import { of, throwError } from 'rxjs';
 
 const plain: PublicProduct = { id: 1, name: 'Torta', price: 80, ingredients: [] };
 const configured: PublicProduct = { id: 2, name: 'Café', price: 50, ingredients: [], options: [{ id: 1, name: 'Tamaño', selection_type: 'single', required: true, values: [{ id: 9, name: 'Grande', price_delta: 10 }] }] };
+
+describe('CatalogPageComponent sharing', () => {
+  const originalShare = navigator.share;
+  const originalClipboard = navigator.clipboard;
+
+  let component: CatalogPageComponent;
+  let writeText: jasmine.Spy;
+  let success: jasmine.Spy;
+
+  beforeEach(() => {
+    writeText = jasmine.createSpy('writeText').and.returnValue(Promise.resolve());
+    success = jasmine.createSpy('success');
+    component = Object.create(CatalogPageComponent.prototype) as CatalogPageComponent;
+    Object.assign(component, {
+      catalog$: of({ business: { name: 'La Tiendita' } }),
+      notification: { success }
+    });
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(navigator, 'share', { configurable: true, value: originalShare });
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: originalClipboard });
+  });
+
+  it('uses native sharing with the business name and canonical URL', async () => {
+    const share = jasmine.createSpy('share').and.returnValue(Promise.resolve());
+    Object.defineProperty(navigator, 'share', { configurable: true, value: share });
+    const pathname = window.location.pathname;
+
+    await component.share();
+
+    expect(share).toHaveBeenCalledOnceWith({ title: 'La Tiendita', url: window.location.origin + pathname });
+    expect(writeText).not.toHaveBeenCalled();
+    expect(success).not.toHaveBeenCalled();
+  });
+
+  it('does nothing else when the native share dialog is dismissed', async () => {
+    const share = jasmine.createSpy('share').and.returnValue(Promise.reject(new DOMException('dismissed', 'AbortError')));
+    Object.defineProperty(navigator, 'share', { configurable: true, value: share });
+
+    await component.share();
+
+    expect(writeText).not.toHaveBeenCalled();
+    expect(success).not.toHaveBeenCalled();
+  });
+
+  it('copies the canonical URL and confirms when native sharing is unavailable', async () => {
+    Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
+    const pathname = window.location.pathname;
+
+    await component.share();
+
+    expect(writeText).toHaveBeenCalledOnceWith(window.location.origin + pathname);
+    expect(success).toHaveBeenCalledOnceWith('Enlace copiado');
+  });
+});
 
 describe('CatalogPageComponent product configuration', () => {
   let component: CatalogPageComponent;
